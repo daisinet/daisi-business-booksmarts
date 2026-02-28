@@ -1,3 +1,4 @@
+using System.Text.Json;
 using BookSmarts.SDK.Clients;
 
 namespace BookSmarts.SDK;
@@ -8,6 +9,11 @@ namespace BookSmarts.SDK;
 public class BookSmartsClient : IDisposable
 {
     private readonly HttpClient _http;
+
+    internal static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     public CompanyClient Companies { get; }
     public CustomerClient Customers { get; }

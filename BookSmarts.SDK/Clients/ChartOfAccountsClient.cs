@@ -8,12 +8,12 @@ public class ChartOfAccountsClient(HttpClient http)
     public async Task<List<ChartOfAccountEntry>> ListAsync(string companyId, bool activeOnly = true)
     {
         return await http.GetFromJsonAsync<List<ChartOfAccountEntry>>(
-            $"/api/companies/{companyId}/accounts?activeOnly={activeOnly}") ?? [];
+            $"/api/companies/{companyId}/accounts?activeOnly={activeOnly}", BookSmartsClient.JsonOptions) ?? [];
     }
 
     public async Task<ChartOfAccountEntry?> GetAsync(string companyId, string id)
     {
         return await http.GetFromJsonAsync<ChartOfAccountEntry>(
-            $"/api/companies/{companyId}/accounts/{id}");
+            $"/api/companies/{companyId}/accounts/{id}", BookSmartsClient.JsonOptions);
     }
 }

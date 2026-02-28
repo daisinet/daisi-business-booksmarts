@@ -10,32 +10,32 @@ public class JournalEntryClient(HttpClient http)
         var url = $"/api/companies/{companyId}/journal-entries";
         if (!string.IsNullOrEmpty(status))
             url += $"?status={Uri.EscapeDataString(status)}";
-        return await http.GetFromJsonAsync<List<JournalEntry>>(url) ?? [];
+        return await http.GetFromJsonAsync<List<JournalEntry>>(url, BookSmartsClient.JsonOptions) ?? [];
     }
 
     public async Task<JournalEntry?> GetAsync(string companyId, string id)
     {
-        return await http.GetFromJsonAsync<JournalEntry>($"/api/companies/{companyId}/journal-entries/{id}");
+        return await http.GetFromJsonAsync<JournalEntry>($"/api/companies/{companyId}/journal-entries/{id}", BookSmartsClient.JsonOptions);
     }
 
     public async Task<JournalEntry> CreateAsync(JournalEntry entry)
     {
-        var response = await http.PostAsJsonAsync($"/api/companies/{entry.CompanyId}/journal-entries", entry);
+        var response = await http.PostAsJsonAsync($"/api/companies/{entry.CompanyId}/journal-entries", entry, BookSmartsClient.JsonOptions);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<JournalEntry>())!;
+        return (await response.Content.ReadFromJsonAsync<JournalEntry>(BookSmartsClient.JsonOptions))!;
     }
 
     public async Task<JournalEntry> PostAsync(string companyId, string id)
     {
         var response = await http.PostAsync($"/api/companies/{companyId}/journal-entries/{id}/post", null);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<JournalEntry>())!;
+        return (await response.Content.ReadFromJsonAsync<JournalEntry>(BookSmartsClient.JsonOptions))!;
     }
 
     public async Task<JournalEntry> VoidAsync(string companyId, string id)
     {
         var response = await http.PostAsync($"/api/companies/{companyId}/journal-entries/{id}/void", null);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<JournalEntry>())!;
+        return (await response.Content.ReadFromJsonAsync<JournalEntry>(BookSmartsClient.JsonOptions))!;
     }
 }

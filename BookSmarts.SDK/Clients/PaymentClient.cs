@@ -12,25 +12,25 @@ public class PaymentClient(HttpClient http)
             url += $"type={Uri.EscapeDataString(type)}&";
         if (!string.IsNullOrEmpty(status))
             url += $"status={Uri.EscapeDataString(status)}&";
-        return await http.GetFromJsonAsync<List<Payment>>(url.TrimEnd('&', '?')) ?? [];
+        return await http.GetFromJsonAsync<List<Payment>>(url.TrimEnd('&', '?'), BookSmartsClient.JsonOptions) ?? [];
     }
 
     public async Task<Payment?> GetAsync(string companyId, string id)
     {
-        return await http.GetFromJsonAsync<Payment>($"/api/companies/{companyId}/payments/{id}");
+        return await http.GetFromJsonAsync<Payment>($"/api/companies/{companyId}/payments/{id}", BookSmartsClient.JsonOptions);
     }
 
     public async Task<Payment> ReceiveCustomerPaymentAsync(Payment payment)
     {
-        var response = await http.PostAsJsonAsync($"/api/companies/{payment.CompanyId}/payments/receive", payment);
+        var response = await http.PostAsJsonAsync($"/api/companies/{payment.CompanyId}/payments/receive", payment, BookSmartsClient.JsonOptions);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<Payment>())!;
+        return (await response.Content.ReadFromJsonAsync<Payment>(BookSmartsClient.JsonOptions))!;
     }
 
     public async Task<Payment> VoidAsync(string companyId, string id)
     {
         var response = await http.PostAsync($"/api/companies/{companyId}/payments/{id}/void", null);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<Payment>())!;
+        return (await response.Content.ReadFromJsonAsync<Payment>(BookSmartsClient.JsonOptions))!;
     }
 }
