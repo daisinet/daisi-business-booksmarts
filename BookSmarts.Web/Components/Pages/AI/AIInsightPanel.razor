@@ -1,0 +1,124 @@
+@using BookSmarts.Web.Services
+
+<div class="mt-3">
+    @if (!showInsight)
+    {
+        <button class="btn btn-outline-primary btn-sm" @onclick="Analyze" disabled="@isLoading">
+            @if (isLoading)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                <span>Analyzing...</span>
+            }
+            else
+            {
+                <i class="fa-duotone fa-wand-magic-sparkles me-1"></i>
+                <span>Analyze with AI</span>
+            }
+        </button>
+    }
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-warning mt-2 small">
+            <i class="fa-duotone fa-triangle-exclamation me-1"></i> @error
+        </div>
+    }
+
+    @if (showInsight)
+    {
+        <div class="bs-card mt-2" style="border-left: 3px solid var(--bs-accent, #6366f1);">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <h6 class="mb-0">
+                    <i class="fa-duotone fa-wand-magic-sparkles me-1" style="color: var(--bs-accent, #6366f1);"></i>
+                    AI Insight
+                </h6>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-outline-secondary btn-sm" style="padding: 2px 6px; font-size: 0.75rem;" @onclick="Analyze" disabled="@isLoading" title="Refresh">
+                        <i class="fa-duotone fa-arrows-rotate"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" style="padding: 2px 6px; font-size: 0.75rem;" @onclick="Dismiss" title="Dismiss">
+                        <i class="fa-duotone fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+            @if (isLoading)
+            {
+                <div class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <span class="ms-2 small text-muted">Analyzing your financial data...</span>
+                </div>
+            }
+            else
+            {
+                <div class="small" style="white-space: pre-wrap;">@insight</div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// The formatted financial data context to send to the AI.
+    /// </summary>
+    [Parameter] public string ReportContext { get; set; } = "";
+
+    /// <summary>
+    /// The type of report being analyzed (e.g., "Balance Sheet", "Income Statement").
+    /// </summary>
+    [Parameter] public string ReportType { get; set; } = "Financial Report";
+
+    [Inject] BookSmartsInferenceService InferenceService { get; set; } = default!;
+
+    private bool isLoading;
+    private bool showInsight;
+    private string insight = "";
+    private string? error;
+
+    private async Task Analyze()
+    {
+        if (string.IsNullOrEmpty(ReportContext)) return;
+
+        isLoading = true;
+        showInsight = true;
+        error = null;
+        insight = "";
+        StateHasChanged();
+
+        try
+        {
+            var systemPrompt = $"""
+                You are a financial analyst AI assistant for a small business bookkeeping application called BookSmarts.
+                You analyze {ReportType} reports and provide concise, actionable insights.
+
+                Guidelines:
+                - Be specific and reference actual numbers from the data
+                - Highlight key trends, concerns, or opportunities
+                - Keep your analysis to 3-5 key points
+                - Use plain language a business owner would understand
+                - If something looks unusual or concerning, flag it clearly
+                - End with a brief recommendation or action item
+                """;
+
+            var userPrompt = $"Please analyze this {ReportType} and provide key insights:\n\n{ReportContext}";
+
+            insight = await InferenceService.AnalyzeAsync(systemPrompt, userPrompt);
+        }
+        catch (Exception ex)
+        {
+            error = "Unable to generate AI insights at this time. Please try again later.";
+            showInsight = false;
+            Console.WriteLine($"AI Insight error: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Dismiss()
+    {
+        showInsight = false;
+        insight = "";
+    }
+}

@@ -1,0 +1,98 @@
+@using BookSmarts.Web.Services
+
+<div class="bs-card">
+    <div class="d-flex justify-content-between align-items-start">
+        <h5>
+            <i class="fa-duotone fa-wand-magic-sparkles me-1" style="color: var(--bs-accent, #6366f1);"></i>
+            AI Financial Summary
+        </h5>
+        <button class="btn btn-outline-secondary btn-sm" style="padding: 2px 6px; font-size: 0.75rem;" @onclick="Refresh" disabled="@isLoading" title="Refresh">
+            <i class="fa-duotone fa-arrows-rotate"></i>
+        </button>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-3">
+            <div class="spinner-border spinner-border-sm" role="status"></div>
+            <span class="ms-2 small text-muted">Analyzing your finances...</span>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(summary))
+    {
+        <div class="small" style="white-space: pre-wrap;">@summary</div>
+    }
+    else if (!string.IsNullOrEmpty(error))
+    {
+        <p class="text-muted small">@error</p>
+    }
+    else
+    {
+        <p class="text-muted small">Click refresh to get an AI-powered summary of your financial health.</p>
+    }
+</div>
+
+@code {
+    [Parameter] public string? CompanyId { get; set; }
+    [Parameter] public bool CashBasis { get; set; }
+
+    [Inject] BookSmartsInferenceService InferenceService { get; set; } = default!;
+    [Inject] FinancialStatementService Financials { get; set; } = default!;
+    [Inject] FinancialContextBuilder ContextBuilder { get; set; } = default!;
+
+    private string summary = "";
+    private string? error;
+    private bool isLoading;
+    private string? lastCompanyId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Only auto-load once when company first appears
+        if (!string.IsNullOrEmpty(CompanyId) && CompanyId != lastCompanyId && string.IsNullOrEmpty(summary))
+        {
+            lastCompanyId = CompanyId;
+        }
+    }
+
+    private async Task Refresh()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+
+        isLoading = true;
+        error = null;
+        StateHasChanged();
+
+        try
+        {
+            var today = DateTime.Today;
+            var ytdFrom = new DateTime(today.Year, 1, 1);
+
+            var bs = await Financials.GetBalanceSheetAsync(CompanyId, today, CashBasis);
+            var is_ = await Financials.GetIncomeStatementAsync(CompanyId, ytdFrom, today, CashBasis);
+
+            var context = $"""
+                {ContextBuilder.BuildBalanceSheetContext(bs)}
+
+                {ContextBuilder.BuildIncomeStatementContext(is_)}
+                """;
+
+            var systemPrompt = """
+                You are a financial health summarizer for a small business bookkeeping app.
+                Provide a brief 2-3 sentence summary of the company's financial health based on the data.
+                Be specific, mention key numbers, and highlight any concerns or positive trends.
+                Keep it very concise — this is a dashboard widget.
+                """;
+
+            summary = await InferenceService.AnalyzeAsync(systemPrompt, context, 0.5f);
+        }
+        catch
+        {
+            error = "Unable to generate summary right now.";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

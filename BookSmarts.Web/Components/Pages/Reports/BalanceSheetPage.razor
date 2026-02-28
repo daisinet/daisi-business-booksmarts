@@ -154,6 +154,8 @@ else
                 }
             </tfoot>
         </table>
+
+        <AIInsightPanel ReportContext="@reportContext" ReportType="Balance Sheet" />
     }
 }
 
@@ -161,10 +163,12 @@ else
     [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
     [CascadingParameter(Name = "CashBasis")] bool CashBasis { get; set; }
     [Inject] FinancialStatementService Financials { get; set; } = default!;
+    [Inject] FinancialContextBuilder ContextBuilder { get; set; } = default!;
     [Inject] IJSRuntime JS { get; set; } = default!;
 
     private BalanceSheetReport? report;
     private DateTime asOfDate = DateTime.Today;
+    private string reportContext = "";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -179,6 +183,8 @@ else
             report = await Financials.GetBalanceSheetAsync(CompanyId!, asOfDate, CashBasis);
             if (report.AssetSections.Count == 0 && report.LiabilitySections.Count == 0 && report.EquitySections.Count == 0)
                 report = null;
+            else
+                reportContext = ContextBuilder.BuildBalanceSheetContext(report);
         }
         catch { report = null; }
     }

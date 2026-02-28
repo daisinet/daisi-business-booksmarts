@@ -1,0 +1,203 @@
+@page "/ai/projections"
+@using BookSmarts.Web.Services
+
+<h1 class="bs-page-title">Financial Projections</h1>
+<p class="bs-page-subtitle">AI-powered 3-month revenue, expense, and cash projections</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-chart-line-up"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-3 align-items-center flex-wrap">
+            <div>
+                <label class="form-label mb-0 small">Revenue Growth %:</label>
+                <input type="number" class="form-control form-control-sm" style="width: 100px;" step="1" @bind="revenueGrowthPct" />
+            </div>
+            <div>
+                <label class="form-label mb-0 small">Expense Change %:</label>
+                <input type="number" class="form-control form-control-sm" style="width: 100px;" step="1" @bind="expenseChangePct" />
+            </div>
+            <button class="btn btn-primary btn-sm" @onclick="GenerateProjection" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                    <span>Generating...</span>
+                }
+                else
+                {
+                    <i class="fa-duotone fa-wand-magic-sparkles me-1"></i>
+                    <span>Generate Projections</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-warning mt-3">@error</div>
+    }
+
+    @if (projection != null)
+    {
+        <div class="mt-3">
+            <table class="bs-table">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th class="bs-amount">Projected Revenue</th>
+                        <th class="bs-amount">Projected Expenses</th>
+                        <th class="bs-amount">Net Income</th>
+                        <th class="bs-amount">Cash Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var month in projection.Months)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@month.Month</td>
+                            <td class="bs-amount">@month.Revenue.ToString("N2")</td>
+                            <td class="bs-amount">@month.Expenses.ToString("N2")</td>
+                            <td class="bs-amount @(month.NetIncome >= 0 ? "text-success" : "text-danger")">@month.NetIncome.ToString("N2")</td>
+                            <td class="bs-amount @(month.CashBalance >= 0 ? "" : "text-danger")">@month.CashBalance.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (!string.IsNullOrEmpty(projection.Summary))
+            {
+                <div class="bs-card mt-3" style="border-left: 3px solid var(--bs-accent, #6366f1);">
+                    <h6><i class="fa-duotone fa-wand-magic-sparkles me-1" style="color: var(--bs-accent, #6366f1);"></i> Analysis</h6>
+                    <div class="small" style="white-space: pre-wrap;">@projection.Summary</div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(projection.Assumptions))
+            {
+                <div class="bs-card mt-2">
+                    <h6>Assumptions</h6>
+                    <div class="small text-muted" style="white-space: pre-wrap;">@projection.Assumptions</div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(projection.Risks))
+            {
+                <div class="bs-card mt-2">
+                    <h6>Risks</h6>
+                    <div class="small text-muted" style="white-space: pre-wrap;">@projection.Risks</div>
+                </div>
+            }
+        </div>
+    }
+    else if (!isLoading)
+    {
+        <div class="bs-empty mt-3">
+            <i class="fa-duotone fa-chart-line-up"></i>
+            <h4>No projections yet</h4>
+            <p>Adjust the parameters above and click "Generate Projections" to forecast your next 3 months.</p>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [CascadingParameter(Name = "CashBasis")] bool CashBasis { get; set; }
+
+    [Inject] BookSmartsInferenceService InferenceService { get; set; } = default!;
+    [Inject] FinancialStatementService Financials { get; set; } = default!;
+    [Inject] FinancialContextBuilder ContextBuilder { get; set; } = default!;
+
+    private ProjectionResult? projection;
+    private bool isLoading;
+    private string? error;
+    private int revenueGrowthPct = 5;
+    private int expenseChangePct = 0;
+
+    private async Task GenerateProjection()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+
+        isLoading = true;
+        error = null;
+        projection = null;
+        StateHasChanged();
+
+        try
+        {
+            // Load historical data: last 6 months of income statements
+            var today = DateTime.Today;
+            var historicalStatements = new List<IncomeStatementReport>();
+            for (int i = 5; i >= 0; i--)
+            {
+                var monthStart = new DateTime(today.Year, today.Month, 1).AddMonths(-i);
+                var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+                if (monthEnd > today) monthEnd = today;
+
+                try
+                {
+                    var stmt = await Financials.GetIncomeStatementAsync(CompanyId, monthStart, monthEnd, CashBasis);
+                    historicalStatements.Add(stmt);
+                }
+                catch { }
+            }
+
+            var balanceSheet = await Financials.GetBalanceSheetAsync(CompanyId, today, CashBasis);
+            var cashFlow = await Financials.GetCashFlowStatementAsync(CompanyId, new DateTime(today.Year, 1, 1), today);
+
+            var context = ContextBuilder.BuildProjectionContext(historicalStatements, balanceSheet, cashFlow);
+
+            var systemPrompt = """
+                You are a financial projection AI for a small business bookkeeping app.
+                Based on the historical financial data provided, generate a 3-month projection.
+
+                You MUST respond with ONLY a valid JSON object in this exact format (no markdown, no explanation outside the JSON):
+                {
+                    "months": [
+                        { "month": "Month Year", "revenue": 0.00, "expenses": 0.00, "netIncome": 0.00, "cashBalance": 0.00 },
+                        { "month": "Month Year", "revenue": 0.00, "expenses": 0.00, "netIncome": 0.00, "cashBalance": 0.00 },
+                        { "month": "Month Year", "revenue": 0.00, "expenses": 0.00, "netIncome": 0.00, "cashBalance": 0.00 }
+                    ],
+                    "assumptions": "Brief description of assumptions used",
+                    "risks": "Key risks to these projections",
+                    "summary": "2-3 sentence analysis of the outlook"
+                }
+
+                Use realistic numbers based on the trends in the historical data.
+                Apply the user's what-if parameters to adjust the projections.
+                """;
+
+            var userPrompt = $"""
+                Here is the historical financial data:
+
+                {context}
+
+                What-if parameters:
+                - Revenue growth: {revenueGrowthPct}% per month
+                - Expense change: {expenseChangePct}% per month
+
+                Generate the 3-month projection as JSON.
+                """;
+
+            projection = await InferenceService.AnalyzeJsonAsync<ProjectionResult>(systemPrompt, userPrompt, 0.3f);
+
+            if (projection == null)
+                error = "Unable to parse the projection data. Please try again.";
+        }
+        catch (Exception ex)
+        {
+            error = "Unable to generate projections at this time. Please try again later.";
+            Console.WriteLine($"Projection error: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

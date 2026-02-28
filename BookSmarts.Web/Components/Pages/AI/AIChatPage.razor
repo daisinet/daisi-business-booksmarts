@@ -1,0 +1,297 @@
+@page "/ai/chat"
+@using BookSmarts.Web.Services
+@using Daisi.SDK.Clients.V1.Host
+@implements IDisposable
+
+<h1 class="bs-page-title">AI Business Coach</h1>
+<p class="bs-page-subtitle">Ask questions about your finances, get advice, and explore your data</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-wand-magic-sparkles"></i>
+        <h4>No company selected</h4>
+        <p>Select a company to start chatting with your AI advisor.</p>
+    </div>
+}
+else
+{
+    <div class="d-flex flex-column" style="height: calc(100vh - 220px);">
+        @* Message area *@
+        <div class="flex-grow-1 overflow-auto p-3" id="chatMessages" @ref="messagesContainer">
+            @if (conversation.Messages.Count == 0 && !isStreaming)
+            {
+                <div class="text-center py-5">
+                    <i class="fa-duotone fa-comments" style="font-size: 3rem; color: var(--bs-accent, #6366f1); opacity: 0.3;"></i>
+                    <h5 class="mt-3 text-muted">Start a conversation</h5>
+                    <p class="text-muted small">Ask about your financial health, get accounting advice, or explore your data.</p>
+                    <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
+                        <button class="btn btn-outline-secondary btn-sm" @onclick='() => SendSuggestion("How is my business doing financially?")'>
+                            How is my business doing?
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick='() => SendSuggestion("What are my biggest expenses?")'>
+                            Biggest expenses?
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick='() => SendSuggestion("Do I have any overdue receivables I should follow up on?")'>
+                            Overdue receivables?
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick='() => SendSuggestion("What should I focus on to improve profitability?")'>
+                            Improve profitability?
+                        </button>
+                    </div>
+                </div>
+            }
+
+            @foreach (var msg in conversation.Messages)
+            {
+                <AIChatMessage Entry="@msg" />
+            }
+
+            @if (isStreaming)
+            {
+                <div class="d-flex justify-content-start mb-3">
+                    <div class="bs-chat-bubble bs-chat-assistant">
+                        <div class="d-flex align-items-center mb-1">
+                            <i class="fa-duotone fa-wand-magic-sparkles me-1" style="color: var(--bs-accent, #6366f1); font-size: 0.8rem;"></i>
+                            <strong class="small">AI Advisor</strong>
+                        </div>
+                        <div class="small" style="white-space: pre-wrap;">@streamingContent<span class="bs-cursor-blink">|</span></div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @* Input area *@
+        <div class="border-top p-3">
+            <div class="d-flex gap-2">
+                <input type="text"
+                       class="form-control"
+                       placeholder="Ask about your finances..."
+                       @bind="userInput"
+                       @bind:event="oninput"
+                       @onkeydown="HandleKeyDown"
+                       disabled="@isStreaming" />
+                <button class="btn btn-primary" @onclick="SendMessage" disabled="@(isStreaming || string.IsNullOrWhiteSpace(userInput))">
+                    @if (isStreaming)
+                    {
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                    }
+                    else
+                    {
+                        <i class="fa-duotone fa-paper-plane"></i>
+                    }
+                </button>
+                @if (conversation.Messages.Count > 0)
+                {
+                    <button class="btn btn-outline-secondary" @onclick="NewConversation" title="New conversation">
+                        <i class="fa-duotone fa-rotate-right"></i>
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .bs-chat-bubble {
+        max-width: 80%;
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+    }
+    .bs-chat-user {
+        background: var(--bs-accent, #6366f1);
+        color: white;
+        border-bottom-right-radius: 4px;
+    }
+    .bs-chat-assistant {
+        background: var(--bs-body-bg, #f8f9fa);
+        border: 1px solid var(--bs-border-color, #dee2e6);
+        border-bottom-left-radius: 4px;
+    }
+    .bs-cursor-blink {
+        animation: blink 1s step-end infinite;
+    }
+    @@keyframes blink {
+        50% { opacity: 0; }
+    }
+</style>
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [CascadingParameter(Name = "CashBasis")] bool CashBasis { get; set; }
+
+    [Inject] BookSmartsInferenceService InferenceService { get; set; } = default!;
+    [Inject] FinancialStatementService Financials { get; set; } = default!;
+    [Inject] AgingService Aging { get; set; } = default!;
+    [Inject] AccountingService Accounting { get; set; } = default!;
+    [Inject] FinancialContextBuilder ContextBuilder { get; set; } = default!;
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    private ChatConversation conversation = new();
+    private string userInput = "";
+    private string streamingContent = "";
+    private bool isStreaming;
+    private CancellationTokenSource? streamCts;
+    private ElementReference messagesContainer;
+
+    private string BuildSystemPrompt(string financialContext)
+    {
+        return $"""
+            You are an AI Business Coach and financial advisor for a small business bookkeeping application called BookSmarts.
+
+            Your role:
+            - Help business owners understand their financial position
+            - Provide actionable advice based on their actual financial data
+            - Answer accounting and bookkeeping questions in plain language
+            - Identify trends, risks, and opportunities in their numbers
+            - Suggest practical next steps they can take
+
+            Guidelines:
+            - Be conversational but professional
+            - Reference specific numbers from the data when relevant
+            - Keep responses concise (2-4 paragraphs max unless the user asks for detail)
+            - If you're unsure about something, say so rather than guessing
+            - Don't give specific tax or legal advice — suggest consulting a professional for that
+
+            Here is the company's current financial snapshot:
+
+            {financialContext}
+            """;
+    }
+
+    private async Task<string> BuildFinancialContext()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return "";
+
+        var sb = new System.Text.StringBuilder();
+
+        try
+        {
+            var today = DateTime.Today;
+            var ytdFrom = new DateTime(today.Year, 1, 1);
+
+            var bs = await Financials.GetBalanceSheetAsync(CompanyId, today, CashBasis);
+            sb.AppendLine(ContextBuilder.BuildBalanceSheetContext(bs));
+            sb.AppendLine();
+
+            var is_ = await Financials.GetIncomeStatementAsync(CompanyId, ytdFrom, today, CashBasis);
+            sb.AppendLine(ContextBuilder.BuildIncomeStatementContext(is_));
+            sb.AppendLine();
+
+            var cf = await Financials.GetCashFlowStatementAsync(CompanyId, ytdFrom, today);
+            sb.AppendLine(ContextBuilder.BuildCashFlowContext(cf));
+        }
+        catch { }
+
+        try
+        {
+            var arResult = await Aging.GetArAgingReportAsync(CompanyId, DateTime.Today);
+            if (arResult.Summaries.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine(ContextBuilder.BuildAgingContext(arResult.Summaries, arResult.Lines, "ar"));
+            }
+
+            var apResult = await Aging.GetApAgingReportAsync(CompanyId, DateTime.Today);
+            if (apResult.Summaries.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine(ContextBuilder.BuildAgingContext(apResult.Summaries, apResult.Lines, "ap"));
+            }
+        }
+        catch { }
+
+        return sb.ToString();
+    }
+
+    private async Task SendSuggestion(string text)
+    {
+        userInput = text;
+        await SendMessage();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !string.IsNullOrWhiteSpace(userInput) && !isStreaming)
+            await SendMessage();
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(userInput) || isStreaming) return;
+
+        var messageText = userInput.Trim();
+        userInput = "";
+
+        conversation.Messages.Add(new ChatEntry { Role = "user", Content = messageText });
+        StateHasChanged();
+
+        isStreaming = true;
+        streamingContent = "";
+        streamCts = new CancellationTokenSource();
+        StateHasChanged();
+        await ScrollToBottom();
+
+        try
+        {
+            var financialContext = await BuildFinancialContext();
+            var systemPrompt = BuildSystemPrompt(financialContext);
+
+            // Build conversation history for context
+            var historyPrompt = new System.Text.StringBuilder();
+            foreach (var msg in conversation.Messages)
+            {
+                var role = msg.Role == "user" ? "User" : "Assistant";
+                historyPrompt.AppendLine($"{role}: {msg.Content}");
+                historyPrompt.AppendLine();
+            }
+
+            await foreach (var token in InferenceService.StreamAsync(systemPrompt, historyPrompt.ToString(), 0.7f, streamCts.Token))
+            {
+                streamingContent += token;
+                StateHasChanged();
+            }
+
+            conversation.Messages.Add(new ChatEntry { Role = "assistant", Content = streamingContent });
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            var errorMsg = "I'm sorry, I wasn't able to process that request. Please try again.";
+            conversation.Messages.Add(new ChatEntry { Role = "assistant", Content = errorMsg });
+            Console.WriteLine($"Chat error: {ex.Message}");
+        }
+        finally
+        {
+            isStreaming = false;
+            streamingContent = "";
+            streamCts?.Dispose();
+            streamCts = null;
+            StateHasChanged();
+            await ScrollToBottom();
+        }
+    }
+
+    private async Task NewConversation()
+    {
+        conversation = new ChatConversation { CompanyId = CompanyId ?? "" };
+        streamingContent = "";
+        isStreaming = false;
+        StateHasChanged();
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", "document.getElementById('chatMessages')?.scrollTo(0, document.getElementById('chatMessages').scrollHeight)");
+        }
+        catch { }
+    }
+
+    public void Dispose()
+    {
+        streamCts?.Cancel();
+        streamCts?.Dispose();
+    }
+}

@@ -1,0 +1,225 @@
+@page "/ai/cash-forecast"
+@using BookSmarts.Web.Services
+
+<h1 class="bs-page-title">Cash Flow Forecast</h1>
+<p class="bs-page-subtitle">AI-powered 30/60/90-day cash position forecast</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-crystal-ball"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <button class="btn btn-primary btn-sm" @onclick="GenerateForecast" disabled="@isLoading">
+            @if (isLoading)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                <span>Forecasting...</span>
+            }
+            else
+            {
+                <i class="fa-duotone fa-wand-magic-sparkles me-1"></i>
+                <span>Generate Cash Forecast</span>
+            }
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-warning mt-3">@error</div>
+    }
+
+    @if (forecast != null)
+    {
+        <div class="mt-3">
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <div class="bs-card">
+                        <div class="bs-card-label">Current Cash</div>
+                        <div class="bs-card-value bs-cat-asset">@forecast.CurrentCash.ToString("C2")</div>
+                    </div>
+                </div>
+                @foreach (var period in forecast.Periods)
+                {
+                    <div class="col-md-3">
+                        <div class="bs-card">
+                            <div class="bs-card-label">@period.Label</div>
+                            <div class="bs-card-value @(period.ProjectedBalance >= 0 ? "bs-amount-positive" : "bs-amount-negative")">
+                                @period.ProjectedBalance.ToString("C2")
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <table class="bs-table">
+                <thead>
+                    <tr>
+                        <th>Period</th>
+                        <th class="bs-amount">Expected Inflows</th>
+                        <th class="bs-amount">Expected Outflows</th>
+                        <th class="bs-amount">Projected Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var period in forecast.Periods)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@period.Label</td>
+                            <td class="bs-amount text-success">@period.ExpectedInflows.ToString("N2")</td>
+                            <td class="bs-amount text-danger">@period.ExpectedOutflows.ToString("N2")</td>
+                            <td class="bs-amount @(period.ProjectedBalance >= 0 ? "" : "text-danger fw-bold")">@period.ProjectedBalance.ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (!string.IsNullOrEmpty(forecast.Summary))
+            {
+                <div class="bs-card mt-3" style="border-left: 3px solid var(--bs-accent, #6366f1);">
+                    <h6><i class="fa-duotone fa-wand-magic-sparkles me-1" style="color: var(--bs-accent, #6366f1);"></i> Analysis</h6>
+                    <div class="small" style="white-space: pre-wrap;">@forecast.Summary</div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(forecast.Assumptions))
+            {
+                <div class="bs-card mt-2">
+                    <h6>Assumptions</h6>
+                    <div class="small text-muted" style="white-space: pre-wrap;">@forecast.Assumptions</div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(forecast.Risks))
+            {
+                <div class="bs-card mt-2">
+                    <h6>Risks</h6>
+                    <div class="small text-muted" style="white-space: pre-wrap;">@forecast.Risks</div>
+                </div>
+            }
+        </div>
+    }
+    else if (!isLoading)
+    {
+        <div class="bs-empty mt-3">
+            <i class="fa-duotone fa-crystal-ball"></i>
+            <h4>No forecast yet</h4>
+            <p>Click "Generate Cash Forecast" to see your projected cash position for the next 30, 60, and 90 days.</p>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [CascadingParameter(Name = "CashBasis")] bool CashBasis { get; set; }
+
+    [Inject] BookSmartsInferenceService InferenceService { get; set; } = default!;
+    [Inject] FinancialStatementService Financials { get; set; } = default!;
+    [Inject] AgingService Aging { get; set; } = default!;
+    [Inject] FinancialContextBuilder ContextBuilder { get; set; } = default!;
+
+    private CashForecast? forecast;
+    private bool isLoading;
+    private string? error;
+
+    private async Task GenerateForecast()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+
+        isLoading = true;
+        error = null;
+        forecast = null;
+        StateHasChanged();
+
+        try
+        {
+            var today = DateTime.Today;
+            var ytdFrom = new DateTime(today.Year, 1, 1);
+
+            // Load current financial data
+            var cashFlow = await Financials.GetCashFlowStatementAsync(CompanyId, ytdFrom, today);
+            var balanceSheet = await Financials.GetBalanceSheetAsync(CompanyId, today, CashBasis);
+
+            var contextParts = new System.Text.StringBuilder();
+            contextParts.AppendLine(ContextBuilder.BuildCashFlowContext(cashFlow));
+            contextParts.AppendLine();
+
+            contextParts.AppendLine($"Current Cash Position: {cashFlow.EndingCashBalance:N2}");
+            contextParts.AppendLine();
+
+            // Add AR aging data
+            try
+            {
+                var arResult = await Aging.GetArAgingReportAsync(CompanyId, today);
+                if (arResult.Summaries.Count > 0)
+                    contextParts.AppendLine(ContextBuilder.BuildAgingContext(arResult.Summaries, arResult.Lines, "ar"));
+            }
+            catch { }
+
+            // Add AP aging data
+            try
+            {
+                var apResult = await Aging.GetApAgingReportAsync(CompanyId, today);
+                if (apResult.Summaries.Count > 0)
+                    contextParts.AppendLine(ContextBuilder.BuildAgingContext(apResult.Summaries, apResult.Lines, "ap"));
+            }
+            catch { }
+
+            // Add recent income trend
+            try
+            {
+                var last3From = new DateTime(today.Year, today.Month, 1).AddMonths(-3);
+                var is_ = await Financials.GetIncomeStatementAsync(CompanyId, last3From, today, CashBasis);
+                contextParts.AppendLine();
+                contextParts.AppendLine(ContextBuilder.BuildIncomeStatementContext(is_));
+            }
+            catch { }
+
+            var systemPrompt = """
+                You are a cash flow forecasting AI for a small business bookkeeping app.
+                Based on the financial data provided (cash flow, AR/AP aging, income trends),
+                generate a 30/60/90-day cash position forecast.
+
+                You MUST respond with ONLY a valid JSON object in this exact format (no markdown, no explanation outside the JSON):
+                {
+                    "currentCash": 0.00,
+                    "periods": [
+                        { "label": "30 Days", "expectedInflows": 0.00, "expectedOutflows": 0.00, "projectedBalance": 0.00 },
+                        { "label": "60 Days", "expectedInflows": 0.00, "expectedOutflows": 0.00, "projectedBalance": 0.00 },
+                        { "label": "90 Days", "expectedInflows": 0.00, "expectedOutflows": 0.00, "projectedBalance": 0.00 }
+                    ],
+                    "assumptions": "Brief description of assumptions",
+                    "risks": "Key risks to this forecast",
+                    "summary": "2-3 sentence analysis of the cash outlook"
+                }
+
+                Key considerations:
+                - Current AR aging tells you expected inflows (current items likely collected within 30 days)
+                - Current AP aging tells you expected outflows (current items due within 30 days)
+                - Historical operating cash flow patterns indicate ongoing burn rate
+                - Use realistic collection and payment patterns
+                """;
+
+            var userPrompt = $"Here is the financial data for forecasting:\n\n{contextParts}";
+
+            forecast = await InferenceService.AnalyzeJsonAsync<CashForecast>(systemPrompt, userPrompt, 0.3f);
+
+            if (forecast == null)
+                error = "Unable to parse the forecast data. Please try again.";
+        }
+        catch (Exception ex)
+        {
+            error = "Unable to generate cash forecast at this time. Please try again later.";
+            Console.WriteLine($"Forecast error: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

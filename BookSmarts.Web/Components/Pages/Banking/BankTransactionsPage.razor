@@ -147,22 +147,42 @@ else
 
                         <div class="mb-2">
                             <label class="form-label small">Assign to Account</label>
-                            <select class="form-select form-select-sm" @bind="categorizeAccountId">
-                                <option value="">— Select Account —</option>
-                                @foreach (var category in Enum.GetValues<AccountCategory>())
-                                {
-                                    var categoryAccounts = coaAccounts.Where(a => a.IsActive && a.Category == category).OrderBy(a => a.AccountNumber).ToList();
-                                    if (categoryAccounts.Count > 0)
+                            <div class="d-flex gap-1 mb-1">
+                                <select class="form-select form-select-sm" @bind="categorizeAccountId">
+                                    <option value="">— Select Account —</option>
+                                    @foreach (var category in Enum.GetValues<AccountCategory>())
                                     {
-                                        <optgroup label="@category">
-                                            @foreach (var acct in categoryAccounts)
-                                            {
-                                                <option value="@acct.id">@acct.AccountNumber — @acct.Name</option>
-                                            }
-                                        </optgroup>
+                                        var categoryAccounts = coaAccounts.Where(a => a.IsActive && a.Category == category).OrderBy(a => a.AccountNumber).ToList();
+                                        if (categoryAccounts.Count > 0)
+                                        {
+                                            <optgroup label="@category">
+                                                @foreach (var acct in categoryAccounts)
+                                                {
+                                                    <option value="@acct.id">@acct.AccountNumber — @acct.Name</option>
+                                                }
+                                            </optgroup>
+                                        }
                                     }
-                                }
-                            </select>
+                                </select>
+                                <button class="btn btn-outline-primary btn-sm" @onclick="AiSuggestCategory"
+                                        disabled="@aiCategorizing" title="AI suggest category" style="white-space: nowrap;">
+                                    @if (aiCategorizing)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="fa-duotone fa-wand-magic-sparkles"></i>
+                                    }
+                                </button>
+                            </div>
+                            @if (!string.IsNullOrEmpty(aiCategoryReason))
+                            {
+                                <div class="small text-muted mb-1">
+                                    <i class="fa-duotone fa-wand-magic-sparkles me-1" style="color: var(--bs-accent, #6366f1);"></i>
+                                    @aiCategoryReason
+                                </div>
+                            }
                         </div>
 
                         @if (selectedTxn.MatchedRuleId != null)
@@ -339,6 +359,7 @@ else
 
     [Inject] BankingService Banking { get; set; } = default!;
     [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
+    [Inject] BookSmarts.Web.Services.BookSmartsInferenceService InferenceService { get; set; } = default!;
 
     private List<BankTransaction> transactions = new();
     private List<BankConnection> connections = new();
@@ -353,6 +374,8 @@ else
     private bool createRuleOnCategorize;
     private bool categorizing;
     private bool bulkMode;
+    private bool aiCategorizing;
+    private string? aiCategoryReason;
     private BankingService.RulePreviewResult? rulePreview;
     private HashSet<string> rulePreviewSelectedIds = new();
     private bool rulePreviewLoaded;
@@ -596,6 +619,77 @@ else
         finally
         {
             categorizing = false;
+        }
+    }
+
+    private async Task AiSuggestCategory()
+    {
+        if (selectedTxn == null || coaAccounts.Count == 0) return;
+
+        aiCategorizing = true;
+        aiCategoryReason = null;
+        StateHasChanged();
+
+        try
+        {
+            var accountList = string.Join("\n",
+                coaAccounts.Where(a => a.IsActive)
+                    .OrderBy(a => a.AccountNumber)
+                    .Select(a => $"  {a.id}|{a.AccountNumber}|{a.Name}|{a.Category}"));
+
+            var systemPrompt = "You are an accounting assistant that suggests chart of accounts mappings for bank transactions.\n\n" +
+                "Available accounts (id|number|name|category):\n" + accountList + "\n\n" +
+                "You MUST respond with ONLY a valid JSON object:\n" +
+                "{ \"accountId\": \"the-account-id\", \"reason\": \"Brief explanation of why this account fits\" }\n\n" +
+                "Rules:\n" +
+                "- Choose the most appropriate account based on the transaction description, merchant, and amount\n" +
+                "- Money coming IN (negative amount in Plaid = deposit) typically goes to Revenue accounts\n" +
+                "- Money going OUT (positive amount in Plaid = withdrawal) typically goes to Expense accounts\n" +
+                "- Be specific - choose the most fitting account, not a generic catch-all";
+
+            var categories = selectedTxn.PlaidCategories.Count > 0
+                ? string.Join(" > ", selectedTxn.PlaidCategories)
+                : "none";
+
+            var userPrompt = "Transaction:\n" +
+                $"- Merchant: {selectedTxn.MerchantName ?? "unknown"}\n" +
+                $"- Description: {selectedTxn.Name}\n" +
+                $"- Amount: {selectedTxn.Amount:N2} (positive = money out, negative = money in)\n" +
+                $"- Plaid categories: {categories}\n" +
+                $"- Date: {selectedTxn.TransactionDate:yyyy-MM-dd}";
+
+            var result = await InferenceService.AnalyzeAsync(systemPrompt, userPrompt, 0.3f);
+
+            // Parse the suggestion
+            var jsonStart = result.IndexOf('{');
+            var jsonEnd = result.LastIndexOf('}');
+            if (jsonStart >= 0 && jsonEnd > jsonStart)
+            {
+                var json = result[jsonStart..(jsonEnd + 1)];
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("accountId", out var aidEl))
+                {
+                    var suggestedId = aidEl.GetString() ?? "";
+                    if (coaAccounts.Any(a => a.id == suggestedId))
+                    {
+                        categorizeAccountId = suggestedId;
+                        aiCategoryReason = root.TryGetProperty("reason", out var reason)
+                            ? reason.GetString() ?? ""
+                            : "AI suggestion";
+                    }
+                }
+            }
+        }
+        catch
+        {
+            aiCategoryReason = "Unable to suggest a category. Please select manually.";
+        }
+        finally
+        {
+            aiCategorizing = false;
+            StateHasChanged();
         }
     }
 }

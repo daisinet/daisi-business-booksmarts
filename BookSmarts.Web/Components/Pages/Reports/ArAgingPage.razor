@@ -86,16 +86,20 @@ else
                 </tr>
             </tfoot>
         </table>
+
+        <AIInsightPanel ReportContext="@reportContext" ReportType="AR Aging" />
     }
 }
 
 @code {
     [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
     [Inject] AgingService Aging { get; set; } = default!;
+    [Inject] FinancialContextBuilder ContextBuilder { get; set; } = default!;
     [Inject] IJSRuntime JS { get; set; } = default!;
 
     private List<AgingReportLine> lines = new();
     private List<AgingReportSummary> summaries = new();
+    private string reportContext = "";
     private DateTime asOfDate = DateTime.Today;
     private string? expandedContact;
 
@@ -112,6 +116,8 @@ else
             var result = await Aging.GetArAgingReportAsync(CompanyId!, asOfDate);
             lines = result.Lines;
             summaries = result.Summaries;
+            if (summaries.Count > 0)
+                reportContext = ContextBuilder.BuildAgingContext(summaries, lines, "ar");
         }
         catch { }
     }

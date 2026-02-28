@@ -12,6 +12,29 @@
 }
 else
 {
+    @* ── Natural Language Journal Entry ── *@
+    <div class="bs-card mb-3" style="max-width: 900px; border-left: 3px solid var(--bs-accent, #6366f1);">
+        <div class="d-flex align-items-center mb-2">
+            <i class="fa-duotone fa-wand-magic-sparkles me-1" style="color: var(--bs-accent, #6366f1);"></i>
+            <strong class="small">Describe in Plain English</strong>
+        </div>
+        <div class="d-flex gap-2">
+            <input type="text" class="form-control form-control-sm" @bind="nlDescription"
+                   placeholder="e.g. Paid $500 rent for January from checking account" @onkeydown="HandleNlKeyDown" />
+            <button class="btn btn-outline-primary btn-sm" @onclick="GenerateFromNL" disabled="@nlLoading" style="white-space: nowrap;">
+                @if (nlLoading)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="fa-duotone fa-wand-magic-sparkles me-1"></i> Generate
+            </button>
+        </div>
+        @if (!string.IsNullOrEmpty(nlError))
+        {
+            <div class="small text-warning mt-1">@nlError</div>
+        }
+    </div>
+
     <div class="bs-card" style="max-width: 900px;">
         <div class="row mb-3">
             <div class="col-md-4">
@@ -118,6 +141,7 @@ else
     [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
     [Inject] AccountingService Accounting { get; set; } = default!;
     [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
+    [Inject] BookSmarts.Web.Services.BookSmartsInferenceService InferenceService { get; set; } = default!;
     [Inject] NavigationManager Nav { get; set; } = default!;
 
     private List<ChartOfAccountEntry> accounts = new();
@@ -127,6 +151,11 @@ else
     private string memo = "";
     private bool saving;
     private string? error;
+
+    // Natural language entry
+    private string nlDescription = "";
+    private bool nlLoading;
+    private string? nlError;
 
     private decimal TotalDebit => lines.Sum(l => l.Debit);
     private decimal TotalCredit => lines.Sum(l => l.Credit);
@@ -205,5 +234,119 @@ else
             saving = false;
             return null;
         }
+    }
+
+    private async Task HandleNlKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(nlDescription) && !nlLoading)
+            await GenerateFromNL();
+    }
+
+    private async Task GenerateFromNL()
+    {
+        if (string.IsNullOrWhiteSpace(nlDescription) || nlLoading) return;
+
+        nlLoading = true;
+        nlError = null;
+        StateHasChanged();
+
+        try
+        {
+            var accountList = string.Join("\n", accounts.Select(a => $"  {a.id}|{a.AccountNumber}|{a.Name}"));
+
+            var systemPrompt = "You are an accounting assistant that converts plain-English transaction descriptions into double-entry journal entry lines.\n\n" +
+                "Available accounts (format: id|number|name):\n" + accountList + "\n\n" +
+                "You MUST respond with ONLY a valid JSON object:\n" +
+                "{\n" +
+                "    \"description\": \"Brief description for the entry\",\n" +
+                "    \"date\": \"yyyy-MM-dd\",\n" +
+                "    \"lines\": [\n" +
+                "        { \"accountId\": \"account-id\", \"accountNumber\": \"number\", \"accountName\": \"name\", \"debit\": 0.00, \"credit\": 0.00 },\n" +
+                "        { \"accountId\": \"account-id\", \"accountNumber\": \"number\", \"accountName\": \"name\", \"debit\": 0.00, \"credit\": 0.00 }\n" +
+                "    ]\n" +
+                "}\n\n" +
+                "Rules:\n" +
+                "- Total debits MUST equal total credits\n" +
+                "- Use the exact account IDs from the list above\n" +
+                "- Match accounts to the transaction semantically\n" +
+                "- If no date is mentioned, use today's date";
+
+            var result = await InferenceService.AnalyzeAsync(systemPrompt, nlDescription, 0.3f);
+            var json = ExtractJsonFromResponse(result);
+
+            if (json != null)
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("description", out var desc))
+                    description = desc.GetString() ?? nlDescription;
+
+                if (root.TryGetProperty("date", out var dateEl) && DateTime.TryParse(dateEl.GetString(), out var parsedDate))
+                    entryDate = parsedDate;
+
+                if (root.TryGetProperty("lines", out var linesEl))
+                {
+                    lines.Clear();
+                    foreach (var lineEl in linesEl.EnumerateArray())
+                    {
+                        var line = new JournalLine
+                        {
+                            AccountId = lineEl.TryGetProperty("accountId", out var aid) ? aid.GetString() ?? "" : "",
+                            AccountNumber = lineEl.TryGetProperty("accountNumber", out var anum) ? anum.GetString() ?? "" : "",
+                            AccountName = lineEl.TryGetProperty("accountName", out var aname) ? aname.GetString() ?? "" : "",
+                            Debit = lineEl.TryGetProperty("debit", out var d) ? d.GetDecimal() : 0,
+                            Credit = lineEl.TryGetProperty("credit", out var c) ? c.GetDecimal() : 0
+                        };
+                        lines.Add(line);
+                    }
+                }
+
+                nlDescription = "";
+            }
+            else
+            {
+                nlError = "Couldn't parse the AI response. Try rephrasing your description.";
+            }
+        }
+        catch
+        {
+            nlError = "Unable to generate entry. Please try again or enter manually.";
+        }
+        finally
+        {
+            nlLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string? ExtractJsonFromResponse(string response)
+    {
+        // Try code fence first
+        var start = response.IndexOf("```json", StringComparison.OrdinalIgnoreCase);
+        if (start >= 0)
+        {
+            start = response.IndexOf('\n', start) + 1;
+            var end = response.IndexOf("```", start, StringComparison.Ordinal);
+            if (end > start) return response[start..end].Trim();
+        }
+
+        start = response.IndexOf("```", StringComparison.Ordinal);
+        if (start >= 0)
+        {
+            start = response.IndexOf('\n', start) + 1;
+            var end = response.IndexOf("```", start, StringComparison.Ordinal);
+            if (end > start) return response[start..end].Trim();
+        }
+
+        // Try raw JSON
+        var jsonStart = response.IndexOf('{');
+        if (jsonStart >= 0)
+        {
+            var jsonEnd = response.LastIndexOf('}');
+            if (jsonEnd > jsonStart) return response[jsonStart..(jsonEnd + 1)];
+        }
+
+        return null;
     }
 }

@@ -117,6 +117,20 @@ else if (isAuthenticated)
                 </NavLink>
             }
 
+            @if (!sidebarCollapsed) { <div class="bs-nav-section">AI Advisor</div> }
+            <NavLink class="bs-nav-item" href="ai/chat">
+                <i class="fa-duotone fa-comments"></i>
+                @if (!sidebarCollapsed) { <span>Business Coach</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="ai/projections">
+                <i class="fa-duotone fa-chart-line-up"></i>
+                @if (!sidebarCollapsed) { <span>Projections</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="ai/cash-forecast">
+                <i class="fa-duotone fa-crystal-ball"></i>
+                @if (!sidebarCollapsed) { <span>Cash Forecast</span> }
+            </NavLink>
+
             @if (!sidebarCollapsed) { <div class="bs-nav-section">Reports</div> }
             <NavLink class="bs-nav-item" href="trial-balance">
                 <i class="fa-duotone fa-scale-balanced"></i>

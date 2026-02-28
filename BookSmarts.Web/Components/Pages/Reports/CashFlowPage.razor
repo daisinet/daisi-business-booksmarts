@@ -156,15 +156,19 @@ else
                 </tr>
             </tfoot>
         </table>
+
+        <AIInsightPanel ReportContext="@reportContext" ReportType="Cash Flow Statement" />
     }
 }
 
 @code {
     [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
     [Inject] FinancialStatementService Financials { get; set; } = default!;
+    [Inject] FinancialContextBuilder ContextBuilder { get; set; } = default!;
     [Inject] IJSRuntime JS { get; set; } = default!;
 
     private CashFlowReport? report;
+    private string reportContext = "";
     private string selectedPreset = "ytd";
     private DateTime fromDate = new(DateTime.Today.Year, 1, 1);
     private DateTime toDate = DateTime.Today;
@@ -208,6 +212,8 @@ else
             report = await Financials.GetCashFlowStatementAsync(CompanyId!, fromDate, toDate);
             if (report.OperatingActivities.Count == 0 && report.InvestingActivities.Count == 0 && report.FinancingActivities.Count == 0)
                 report = null;
+            else
+                reportContext = ContextBuilder.BuildCashFlowContext(report);
         }
         catch { report = null; }
     }

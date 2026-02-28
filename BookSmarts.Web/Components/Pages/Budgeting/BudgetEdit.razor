@@ -117,6 +117,17 @@ else
         </div>
 
         <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-outline-primary btn-sm" @onclick="AiSuggest" disabled="@aiSuggesting">
+                @if (aiSuggesting)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                    <span>Suggesting...</span>
+                }
+                else
+                {
+                    <i class="fa-duotone fa-wand-magic-sparkles me-1"></i><text> AI Suggest</text>
+                }
+            </button>
             <button class="btn btn-primary btn-sm" @onclick="SaveDraft" disabled="@saving">
                 <i class="fa-duotone fa-floppy-disk me-1"></i> Save Draft
             </button>
@@ -137,6 +148,8 @@ else
     [Inject] BudgetService BudgetSvc { get; set; } = default!;
     [Inject] PeriodService PeriodSvc { get; set; } = default!;
     [Inject] ChartOfAccountsService CoaSvc { get; set; } = default!;
+    [Inject] FinancialStatementService Financials { get; set; } = default!;
+    [Inject] BookSmarts.Web.Services.BookSmartsInferenceService InferenceService { get; set; } = default!;
     [Inject] NavigationManager Nav { get; set; } = default!;
 
     private bool isNew => string.IsNullOrEmpty(BudgetId);
@@ -150,6 +163,7 @@ else
     private List<ChartOfAccountEntry> expenseAccounts = new();
     private Dictionary<string, decimal> amounts = new();
     private bool saving;
+    private bool aiSuggesting;
     private string? error;
     private string? success;
 
@@ -302,5 +316,115 @@ else
         catch (Exception ex) { error = ex.Message; }
 
         saving = false;
+    }
+
+    private async Task AiSuggest()
+    {
+        if (string.IsNullOrEmpty(CompanyId) || selectedFiscalYear == null) return;
+
+        aiSuggesting = true;
+        error = null;
+        StateHasChanged();
+
+        try
+        {
+            // Get last 12 months of actuals for context
+            var today = DateTime.Today;
+            var from = today.AddMonths(-12);
+            var is_ = await Financials.GetIncomeStatementAsync(CompanyId, from, today, false);
+
+            var accountInfo = string.Join("\n",
+                revenueAccounts.Concat(expenseAccounts)
+                    .Select(a => $"  {a.id}|{a.AccountNumber}|{a.Name}"));
+
+            var periodInfo = string.Join(", ", selectedFiscalYear.Periods.Select(p => $"{p.PeriodId}:{p.Name}"));
+
+            var actualLines = new System.Text.StringBuilder();
+            foreach (var sect in is_.RevenueSections.Concat(is_.ExpenseSections))
+                foreach (var line in sect.Lines)
+                    actualLines.AppendLine($"  {line.AccountNumber} {line.AccountName}: {line.Balance:N2} (12-month total)");
+
+            var systemPrompt = "You are a budget advisor for a small business bookkeeping app.\n" +
+                "Based on historical actuals, suggest monthly budget amounts for each account.\n\n" +
+                "You MUST respond with ONLY a valid JSON object:\n" +
+                "{\n" +
+                "    \"suggestions\": [\n" +
+                "        { \"accountId\": \"id\", \"periodId\": \"period-id\", \"amount\": 0.00 }\n" +
+                "    ]\n" +
+                "}\n\n" +
+                "Available accounts (id|number|name):\n" + accountInfo + "\n\n" +
+                "Budget periods: " + periodInfo + "\n\n" +
+                "Rules:\n" +
+                "- Suggest amounts based on the historical data below\n" +
+                "- Use the 12-month average as a baseline, with reasonable adjustments\n" +
+                "- Only suggest for accounts that had activity in the historical period\n" +
+                "- Include amounts for each period";
+
+            var userPrompt = $"Historical actuals (last 12 months):\n{actualLines}\n\nPlease suggest monthly budget amounts.";
+
+            var result = await InferenceService.AnalyzeAsync(systemPrompt, userPrompt, 0.3f);
+
+            // Parse and apply suggestions
+            var json = ExtractJson(result);
+            if (json != null)
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("suggestions", out var suggestions))
+                {
+                    foreach (var s in suggestions.EnumerateArray())
+                    {
+                        var acctId = s.TryGetProperty("accountId", out var aid) ? aid.GetString() ?? "" : "";
+                        var periodId = s.TryGetProperty("periodId", out var pid) ? pid.GetString() ?? "" : "";
+                        var amount = s.TryGetProperty("amount", out var amt) ? amt.GetDecimal() : 0;
+
+                        if (!string.IsNullOrEmpty(acctId) && !string.IsNullOrEmpty(periodId) && amount > 0)
+                        {
+                            var key = $"{acctId}|{periodId}";
+                            // Only suggest if not already filled
+                            if (!amounts.ContainsKey(key) || amounts[key] == 0)
+                                amounts[key] = Math.Round(amount, 2);
+                        }
+                    }
+                    success = "AI suggestions applied to empty budget cells.";
+                }
+            }
+        }
+        catch
+        {
+            error = "Unable to generate budget suggestions. Please try again.";
+        }
+        finally
+        {
+            aiSuggesting = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string? ExtractJson(string response)
+    {
+        var start = response.IndexOf("```json", StringComparison.OrdinalIgnoreCase);
+        if (start >= 0)
+        {
+            start = response.IndexOf('\n', start) + 1;
+            var end = response.IndexOf("```", start, StringComparison.Ordinal);
+            if (end > start) return response[start..end].Trim();
+        }
+
+        start = response.IndexOf("```", StringComparison.Ordinal);
+        if (start >= 0)
+        {
+            start = response.IndexOf('\n', start) + 1;
+            var end = response.IndexOf("```", start, StringComparison.Ordinal);
+            if (end > start) return response[start..end].Trim();
+        }
+
+        var jsonStart = response.IndexOf('{');
+        if (jsonStart >= 0)
+        {
+            var jsonEnd = response.LastIndexOf('}');
+            if (jsonEnd > jsonStart) return response[jsonStart..(jsonEnd + 1)];
+        }
+
+        return null;
     }
 }

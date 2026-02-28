@@ -170,6 +170,8 @@ else
                 </tr>
             </tfoot>
         </table>
+
+        <AIInsightPanel ReportContext="@reportContext" ReportType="Budget vs Actual" />
     }
 }
 
@@ -177,9 +179,11 @@ else
     [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
     [CascadingParameter(Name = "CashBasis")] bool CashBasis { get; set; }
     [Inject] BudgetService BudgetSvc { get; set; } = default!;
+    [Inject] FinancialContextBuilder ContextBuilder { get; set; } = default!;
     [Inject] IJSRuntime JS { get; set; } = default!;
 
     private BudgetVsActualReport? report;
+    private string reportContext = "";
     private List<Budget> budgets = new();
     private string selectedBudgetId = "";
     private string selectedPreset = "ytd";
@@ -211,6 +215,8 @@ else
         try
         {
             report = await BudgetSvc.GetBudgetVsActualAsync(CompanyId!, selectedBudgetId, fromDate, toDate, CashBasis);
+            if (report != null)
+                reportContext = ContextBuilder.BuildBudgetVsActualContext(report);
         }
         catch (Exception ex) { error = ex.Message; }
     }

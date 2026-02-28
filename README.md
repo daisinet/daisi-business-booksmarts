@@ -21,7 +21,14 @@ BookSmarts provides full-featured bookkeeping with support for:
 - **Field-level encryption** — PIN-based AES-GCM encryption for sensitive data at rest
 - **Custom report builder** — Save and run custom account balance and income/expense reports
 - **Audit logging** — Automatic audit trail for journal entries, invoices, and bills
-- **Daisinet bot integration** — 7 bot tools for querying and recording financial data via AI
+- **Daisinet bot integration** — 10 bot tools for querying and recording financial data via AI
+- **AI-powered insights** — On-demand AI analysis on every report page via the Daisinet inference engine
+- **AI Business Coach** — Conversational chatbot with streaming responses and full financial context
+- **Financial projections** — AI-generated 3-month revenue/expense/cash projections with what-if parameters
+- **Cash flow forecasting** — 30/60/90-day cash position forecast using AR/AP aging and bank patterns
+- **Natural language journal entries** — Describe a transaction in plain English and AI generates balanced JE lines
+- **AI budget suggestions** — Auto-suggest budget amounts based on 12 months of historical actuals
+- **AI bank categorization** — AI-suggested chart-of-accounts mappings for uncategorized bank transactions
 
 ## Projects
 
@@ -31,8 +38,8 @@ BookSmarts provides full-featured bookkeeping with support for:
 | `BookSmarts.Data` | Cosmos DB data access layer (partial class pattern) |
 | `BookSmarts.Services` | Business logic — 19 services covering all accounting domains |
 | `BookSmarts.Web` | Blazor Server web application |
-| `BookSmarts.Tools` | Daisinet bot tool integration (7 tools) |
-| `BookSmarts.Tests` | Unit tests (248 tests) |
+| `BookSmarts.Tools` | Daisinet bot tool integration (10 tools) |
+| `BookSmarts.Tests` | Unit tests (266 tests) |
 
 ## Getting Started
 
@@ -105,7 +112,7 @@ Sensitive data can be encrypted at rest using PIN-based AES-GCM encryption. When
 
 ## Bot Tools
 
-BookSmarts includes 7 Daisinet bot tools for AI-driven interaction with accounting data:
+BookSmarts includes 10 Daisinet bot tools for AI-driven interaction with accounting data:
 
 | Tool ID | Description |
 |---------|-------------|
@@ -117,8 +124,53 @@ BookSmarts includes 7 Daisinet bot tools for AI-driven interaction with accounti
 | `booksmarts-outstanding-bills` | List unpaid bills (AP) |
 | `booksmarts-aging-report` | AR or AP aging report by bucket |
 | `booksmarts-create-journal-entry` | Create (and optionally post) a journal entry |
+| `booksmarts-cash-flow` | Get a cash flow statement for a date range |
+| `booksmarts-budget-vs-actual` | Get budget vs actual comparison report |
+| `booksmarts-bank-transactions` | Get recent bank transactions with status filtering |
 
 Tools are auto-discovered by the Daisinet host via reflection. Each tool accepts a `company-id` parameter and returns formatted markdown output.
+
+## AI Features
+
+BookSmarts integrates with the Daisinet inference engine to provide AI-powered financial intelligence. All AI features use the `InferenceClientFactory` registered via `AddDaisiForWeb()`.
+
+### AI Insight Panel
+
+Every report page (Balance Sheet, Income Statement, Cash Flow, Budget vs Actual, AR Aging, AP Aging) includes an "Analyze with AI" button. Clicking it sends the report data as structured context to the inference engine and displays a concise analysis with key trends, concerns, and actionable recommendations.
+
+### AI Business Coach (`/ai/chat`)
+
+A full-page conversational chatbot that streams responses in real-time. On load, it pre-fetches the company's current Balance Sheet, Income Statement, Cash Flow, and AR/AP aging data to provide informed answers. Business owners can ask questions like "How's my cash position?" or "What are my biggest expenses this quarter?" and get answers grounded in their actual data.
+
+### Financial Projections (`/ai/projections`)
+
+Generates a 3-month revenue, expense, net income, and cash balance projection based on the last 6 months of historical income statements, current balance sheet, and cash flow. Includes what-if sliders for revenue growth and expense change percentages.
+
+### Cash Flow Forecast (`/ai/cash-forecast`)
+
+Produces a 30/60/90-day cash position forecast using the current cash balance, AR/AP aging (to estimate expected inflows and outflows), and recent income trends.
+
+### Natural Language Journal Entries
+
+On the Journal Entry creation page, describe a transaction in plain English (e.g., "Paid $500 rent from checking") and the AI generates balanced double-entry journal lines with the correct accounts, debits, and credits.
+
+### Budget Advisor
+
+On the Budget Edit page, click "AI Suggest" to auto-fill empty budget cells with amounts based on the last 12 months of actual income statement data.
+
+### Bank Categorization Suggestions
+
+On the Bank Transactions page, click "AI Suggest" next to the account selector when categorizing a transaction. The AI recommends the most appropriate chart-of-accounts mapping based on the transaction's merchant, amount, and Plaid categories.
+
+### Architecture
+
+| Component | Location | Role |
+|-----------|----------|------|
+| `FinancialContextBuilder` | `BookSmarts.Services` | Formats report models into compact markdown for AI context |
+| `BookSmartsInferenceService` | `BookSmarts.Web/Services` | Wraps `InferenceClientFactory` for single-shot, streaming, and JSON-structured inference |
+| `AIInsightPanel` | `BookSmarts.Web/Components/Pages/AI` | Reusable "Analyze with AI" component for any report |
+| `AIChatPage` | `BookSmarts.Web/Components/Pages/AI` | Full-page streaming chatbot |
+| `AIInsightWidget` | `BookSmarts.Web/Components/Pages/Dashboard` | Dashboard health summary card |
 
 ## Custom Reports
 
@@ -150,3 +202,4 @@ Automatic audit trail for key accounting actions:
 - ~~Phase 5: Multi-company consolidation, budgeting, inter-company transactions~~
 - ~~Phase 6: Daisinet bot tool integration~~
 - ~~Phase 7: Custom report builder and audit logging~~
+- ~~Phase 8: AI inference — report insights, business coach chatbot, projections, cash forecast, NL journal entries, budget advisor, bank categorization~~
