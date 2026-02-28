@@ -3,11 +3,11 @@
 <h1 class="bs-page-title">Consolidated Income Statement</h1>
 <p class="bs-page-subtitle">@(CashBasis ? "Cash Basis" : "Accrual Basis") &mdash; @fromDate.ToString("MMMM d, yyyy") to @toDate.ToString("MMMM d, yyyy")</p>
 
-@if (string.IsNullOrEmpty(AccountId) || companies.Count < 2)
+@if (string.IsNullOrEmpty(AccountId) || effectiveCompanyCount < 2)
 {
     <div class="bs-empty">
         <i class="fa-duotone fa-chart-mixed"></i>
-        <h4>@(companies.Count < 2 ? "Two or more companies required" : "Not authenticated")</h4>
+        <h4>@(effectiveCompanyCount < 2 ? "Two or more companies required" : "Not authenticated")</h4>
         <p>Consolidated statements require at least two companies in your organization.</p>
     </div>
 }
@@ -15,6 +15,16 @@ else
 {
     <div class="bs-toolbar">
         <div class="d-flex gap-2 align-items-center flex-wrap">
+            @if (divisionsEnabled && divisions.Count > 0)
+            {
+                <select class="form-select form-select-sm" style="width: auto;" @bind="selectedDivisionId" @bind:after="LoadData">
+                    <option value="">All Divisions</option>
+                    @foreach (var div in divisions)
+                    {
+                        <option value="@div.id">@div.Name</option>
+                    }
+                </select>
+            }
             <select class="form-select form-select-sm" style="width: auto;" @bind="selectedPreset" @bind:after="ApplyPreset">
                 <option value="">Custom Range</option>
                 <option value="ytd">Year to Date</option>
@@ -160,11 +170,17 @@ else
 
     private ConsolidatedIncomeStatementReport? report;
     private List<Company> companies = new();
+    private List<Division> divisions = new();
     private string organizationId = "";
+    private string selectedDivisionId = "";
+    private bool divisionsEnabled;
     private string selectedPreset = "ytd";
     private DateTime fromDate = new(DateTime.Today.Year, 1, 1);
     private DateTime toDate = DateTime.Today;
-    private int colCount => 1 + companies.Count + (report?.Eliminations != null ? 1 : 0) + 1;
+    private int colCount => 1 + (report?.CompanyReports.Count ?? 0) + (report?.Eliminations != null ? 1 : 0) + 1;
+    private int effectiveCompanyCount => string.IsNullOrEmpty(selectedDivisionId)
+        ? companies.Count
+        : companies.Count(c => c.DivisionId == selectedDivisionId);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -173,10 +189,14 @@ else
         {
             companies = await OrgSvc.GetCompaniesAsync(AccountId);
             var orgs = await OrgSvc.GetOrganizationsAsync(AccountId);
-            organizationId = orgs.FirstOrDefault()?.id ?? "";
+            var org = orgs.FirstOrDefault();
+            organizationId = org?.id ?? "";
+            divisionsEnabled = org?.DivisionsEnabled ?? false;
+            if (divisionsEnabled && !string.IsNullOrEmpty(organizationId))
+                divisions = await OrgSvc.GetDivisionsAsync(AccountId, organizationId);
         }
         catch { }
-        if (companies.Count >= 2)
+        if (effectiveCompanyCount >= 2)
             await LoadData();
     }
 
@@ -184,7 +204,9 @@ else
     {
         try
         {
-            report = await ConsolidationSvc.GetConsolidatedIncomeStatementAsync(AccountId!, organizationId, fromDate, toDate, CashBasis);
+            report = await ConsolidationSvc.GetConsolidatedIncomeStatementAsync(
+                AccountId!, organizationId, fromDate, toDate, CashBasis,
+                string.IsNullOrEmpty(selectedDivisionId) ? null : selectedDivisionId);
         }
         catch { report = null; }
     }

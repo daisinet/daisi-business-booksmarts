@@ -12,12 +12,15 @@ public class ConsolidationService(
     /// Generates a consolidated balance sheet across all companies in an organization.
     /// </summary>
     public async Task<ConsolidatedBalanceSheetReport> GetConsolidatedBalanceSheetAsync(
-        string accountId, string organizationId, DateTime asOfDate, bool cashBasis = false)
+        string accountId, string organizationId, DateTime asOfDate, bool cashBasis = false, string? divisionId = null)
     {
         var org = await organizations.GetOrganizationAsync(organizationId, accountId)
             ?? throw new InvalidOperationException("Organization not found.");
 
         var companies = await organizations.GetCompaniesAsync(accountId, organizationId);
+
+        if (!string.IsNullOrEmpty(divisionId))
+            companies = companies.Where(c => c.DivisionId == divisionId).ToList();
 
         // Get balance sheet for each company in parallel
         var tasks = companies.Select(async c =>
@@ -64,12 +67,15 @@ public class ConsolidationService(
     /// Generates a consolidated income statement across all companies in an organization.
     /// </summary>
     public async Task<ConsolidatedIncomeStatementReport> GetConsolidatedIncomeStatementAsync(
-        string accountId, string organizationId, DateTime fromDate, DateTime toDate, bool cashBasis = false)
+        string accountId, string organizationId, DateTime fromDate, DateTime toDate, bool cashBasis = false, string? divisionId = null)
     {
         var org = await organizations.GetOrganizationAsync(organizationId, accountId)
             ?? throw new InvalidOperationException("Organization not found.");
 
         var companies = await organizations.GetCompaniesAsync(accountId, organizationId);
+
+        if (!string.IsNullOrEmpty(divisionId))
+            companies = companies.Where(c => c.DivisionId == divisionId).ToList();
 
         var tasks = companies.Select(async c =>
         {
