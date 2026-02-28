@@ -1,7 +1,9 @@
+using System.Text.Json.Serialization;
 using BookSmarts.Core.Models;
 using BookSmarts.Data;
 using BookSmarts.Services;
 using BookSmarts.Web.Components;
+using BookSmarts.Web.Services;
 using Daisi.SDK.Models;
 using Daisi.SDK.Web.Extensions;
 using Going.Plaid;
@@ -46,6 +48,14 @@ builder.Services.AddScoped<ConsolidationService>();
 builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<CustomReportService>();
 
+// AI services
+builder.Services.AddScoped<FinancialContextBuilder>();
+builder.Services.AddScoped<BookSmartsInferenceService>();
+
+// JSON enum serialization for API endpoints
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
 var app = builder.Build();
 app.UseDaisiMiddleware();
 
@@ -58,6 +68,9 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseAntiforgery();
 app.MapStaticAssets();
+
+// BookSmarts API endpoints (client-key authenticated)
+app.MapBookSmartsApiEndpoints();
 
 // Plaid webhook endpoint — just flags that sync data is available.
 // Actual sync happens when the user logs in and enters their PIN.

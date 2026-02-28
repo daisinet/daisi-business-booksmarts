@@ -5,4 +5,5 @@
   <Project Path="BookSmarts.Web\BookSmarts.Web.csproj" />
   <Project Path="BookSmarts.Tools\BookSmarts.Tools.csproj" />
   <Project Path="BookSmarts.Tests\BookSmarts.Tests.csproj" />
+  <Project Path="BookSmarts.SDK\BookSmarts.SDK.csproj" />
 </Solution>
