@@ -1,0 +1,128 @@
+@page "/trial-balance"
+
+<h1 class="bs-page-title">Trial Balance</h1>
+<p class="bs-page-subtitle">@(CashBasis ? "Cash Basis" : "Accrual Basis") &mdash; As of @asOfDate.ToString("MMMM d, yyyy")</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-scale-balanced"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center">
+            <label class="form-label mb-0 small">As of:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="asOfDate" @bind:after="LoadData" />
+        </div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="Print">
+                <i class="fa-duotone fa-print me-1"></i> Print
+            </button>
+        </div>
+    </div>
+
+    @if (trialBalance.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-scale-balanced"></i>
+            <h4>No data</h4>
+            <p>Post journal entries to generate a trial balance.</p>
+        </div>
+    }
+    else
+    {
+        AccountCategory? lastCategory = null;
+
+        <table class="bs-table">
+            <thead>
+                <tr>
+                    <th style="width: 100px;">Account</th>
+                    <th>Name</th>
+                    <th class="bs-amount" style="width: 150px;">Debit</th>
+                    <th class="bs-amount" style="width: 150px;">Credit</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var line in trialBalance)
+                {
+                    @if (line.Category != lastCategory)
+                    {
+                        lastCategory = line.Category;
+                        <tr>
+                            <td colspan="4" class="fw-bold small text-uppercase pt-3 bs-cat-@line.Category.ToString().ToLower()" style="border-bottom: 2px solid currentColor;">
+                                @line.Category
+                            </td>
+                        </tr>
+                    }
+                    <tr>
+                        <td><code>@line.AccountNumber</code></td>
+                        <td>@line.AccountName</td>
+                        <td class="bs-amount">@(line.Debit > 0 ? line.Debit.ToString("N2") : "")</td>
+                        <td class="bs-amount">@(line.Credit > 0 ? line.Credit.ToString("N2") : "")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold" style="border-top: 3px double var(--bs-border-color, #000);">
+                    <td colspan="2" class="text-end">Totals:</td>
+                    <td class="bs-amount">@totalDebit.ToString("N2")</td>
+                    <td class="bs-amount">@totalCredit.ToString("N2")</td>
+                </tr>
+                @if (totalDebit == totalCredit)
+                {
+                    <tr>
+                        <td colspan="4" class="text-center small text-success">
+                            <i class="fa-duotone fa-circle-check me-1"></i> Trial balance is in balance
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="4" class="text-center small text-danger">
+                            <i class="fa-duotone fa-triangle-exclamation me-1"></i>
+                            Out of balance by @Math.Abs(totalDebit - totalCredit).ToString("N2")
+                        </td>
+                    </tr>
+                }
+            </tfoot>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [CascadingParameter(Name = "CashBasis")] bool CashBasis { get; set; }
+    [Inject] AccountingService Accounting { get; set; } = default!;
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    private List<TrialBalanceLine> trialBalance = new();
+    private DateTime asOfDate = DateTime.Today;
+    private decimal totalDebit;
+    private decimal totalCredit;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            trialBalance = await Accounting.GetTrialBalanceAsync(CompanyId!, asOfDate, CashBasis);
+            totalDebit = trialBalance.Sum(l => l.Debit);
+            totalCredit = trialBalance.Sum(l => l.Credit);
+        }
+        catch { }
+    }
+
+    private async Task Print()
+    {
+        await JS.InvokeVoidAsync("print");
+    }
+}

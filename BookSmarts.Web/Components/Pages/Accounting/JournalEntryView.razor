@@ -1,0 +1,185 @@
+@page "/journal-entries/{Id}"
+
+<h1 class="bs-page-title">Journal Entry @(entry?.EntryNumber ?? "")</h1>
+
+@if (loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="MudBlazor.Color.Primary" />
+}
+else if (entry == null)
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-circle-exclamation"></i>
+        <h4>Entry not found</h4>
+        <a href="journal-entries">Back to list</a>
+    </div>
+}
+else
+{
+    <div class="bs-card" style="max-width: 900px;">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <span class="bs-badge bs-badge-@entry.Status.ToString().ToLower() me-2">@entry.Status</span>
+                <span class="small text-muted">Source: @entry.SourceType</span>
+            </div>
+            <div class="d-flex gap-2">
+                @if (entry.Status == JournalEntryStatus.Draft)
+                {
+                    <button class="btn btn-success btn-sm" @onclick="PostEntry" disabled="@acting">
+                        <i class="fa-duotone fa-check me-1"></i> Post
+                    </button>
+                }
+                @if (entry.Status == JournalEntryStatus.Posted)
+                {
+                    <button class="btn btn-warning btn-sm" @onclick="VoidEntry" disabled="@acting">
+                        <i class="fa-duotone fa-ban me-1"></i> Void
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="ReverseEntry" disabled="@acting">
+                        <i class="fa-duotone fa-rotate-left me-1"></i> Reverse
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label text-muted small">Date</label>
+                <div>@entry.EntryDate.ToString("MMMM d, yyyy")</div>
+            </div>
+            <div class="col-md-8">
+                <label class="form-label text-muted small">Description</label>
+                <div>@(entry.Description ?? "—")</div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(entry.Memo))
+        {
+            <div class="mb-3">
+                <label class="form-label text-muted small">Memo</label>
+                <div>@entry.Memo</div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(entry.ReversalOfId))
+        {
+            <div class="alert alert-info mb-3">
+                This entry is a reversal of <a href="journal-entries/@entry.ReversalOfId">@entry.ReversalOfId</a>.
+            </div>
+        }
+
+        <table class="bs-table bs-table-striped mt-3">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Account</th>
+                    <th>Description</th>
+                    <th class="bs-amount">Debit</th>
+                    <th class="bs-amount">Credit</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var line in entry.Lines)
+                {
+                    <tr>
+                        <td>@line.LineNumber</td>
+                        <td><code>@line.AccountNumber</code> @line.AccountName</td>
+                        <td class="small">@(line.Description ?? "—")</td>
+                        <td class="bs-amount">@(line.Debit > 0 ? line.Debit.ToString("N2") : "")</td>
+                        <td class="bs-amount">@(line.Credit > 0 ? line.Credit.ToString("N2") : "")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold">
+                    <td colspan="3" class="text-end">Totals:</td>
+                    <td class="bs-amount">@entry.TotalDebit.ToString("N2")</td>
+                    <td class="bs-amount">@entry.TotalCredit.ToString("N2")</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div class="row mt-4 small text-muted">
+            <div class="col-md-4">Created: @entry.CreatedUtc.ToString("g") @(entry.CreatedBy != null ? $"by {entry.CreatedBy}" : "")</div>
+            @if (entry.PostedUtc.HasValue)
+            {
+                <div class="col-md-4">Posted: @entry.PostedUtc.Value.ToString("g") @(entry.PostedBy != null ? $"by {entry.PostedBy}" : "")</div>
+            }
+            @if (entry.VoidedUtc.HasValue)
+            {
+                <div class="col-md-4">Voided: @entry.VoidedUtc.Value.ToString("g")</div>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger mt-3">@error</div>
+        }
+
+        <div class="mt-3">
+            <a href="journal-entries" class="btn btn-outline-secondary btn-sm">
+                <i class="fa-duotone fa-arrow-left me-1"></i> Back to list
+            </a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] AccountingService Accounting { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    private JournalEntry? entry;
+    private bool loading = true;
+    private bool acting;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId) || string.IsNullOrEmpty(Id)) return;
+        loading = true;
+        try
+        {
+            entry = await Accounting.GetJournalEntryAsync(Id, CompanyId!);
+        }
+        catch { }
+        loading = false;
+    }
+
+    private async Task PostEntry()
+    {
+        error = null;
+        acting = true;
+        try
+        {
+            entry = await Accounting.PostJournalEntryAsync(Id, CompanyId!);
+        }
+        catch (Exception ex) { error = ex.Message; }
+        acting = false;
+    }
+
+    private async Task VoidEntry()
+    {
+        error = null;
+        acting = true;
+        try
+        {
+            entry = await Accounting.VoidJournalEntryAsync(Id, CompanyId!);
+        }
+        catch (Exception ex) { error = ex.Message; }
+        acting = false;
+    }
+
+    private async Task ReverseEntry()
+    {
+        error = null;
+        acting = true;
+        try
+        {
+            var reversal = await Accounting.ReverseJournalEntryAsync(Id, CompanyId!, DateTime.Today);
+            Nav.NavigateTo($"journal-entries/{reversal.id}");
+        }
+        catch (Exception ex) { error = ex.Message; }
+        acting = false;
+    }
+}

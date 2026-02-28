@@ -1,0 +1,108 @@
+@page "/payments"
+
+<h1 class="bs-page-title">Payments</h1>
+<p class="bs-page-subtitle">All customer and vendor payments</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-money-bill-transfer"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" style="width: auto;" @bind="typeFilter" @bind:after="LoadData">
+                <option value="">All Types</option>
+                <option value="CustomerPayment">Customer Payments</option>
+                <option value="VendorPayment">Vendor Payments</option>
+            </select>
+            <select class="form-select form-select-sm" style="width: auto;" @bind="statusFilter" @bind:after="LoadData">
+                <option value="">All Statuses</option>
+                @foreach (var s in Enum.GetValues<PaymentStatus>())
+                {
+                    <option value="@s">@s</option>
+                }
+            </select>
+        </div>
+        <div class="bs-toolbar-actions">
+            <a href="payments/receive" class="btn btn-primary btn-sm me-1">
+                <i class="fa-duotone fa-hand-holding-dollar me-1"></i> Receive
+            </a>
+            <a href="payments/make" class="btn btn-outline-primary btn-sm">
+                <i class="fa-duotone fa-money-check-dollar me-1"></i> Make
+            </a>
+        </div>
+    </div>
+
+    @if (payments.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-money-bill-transfer"></i>
+            <h4>No payments</h4>
+            <p>Receive customer payments or make vendor payments to see them here.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table bs-table-striped">
+            <thead>
+                <tr>
+                    <th>Number</th>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Contact</th>
+                    <th class="bs-amount">Amount</th>
+                    <th>Method</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var pmt in payments)
+                {
+                    <tr>
+                        <td>@pmt.PaymentNumber</td>
+                        <td>@pmt.PaymentDate.ToString("MM/dd/yyyy")</td>
+                        <td>
+                            <span class="bs-badge @(pmt.PaymentType == PaymentType.CustomerPayment ? "bs-badge-posted" : "bs-badge-draft")">
+                                @(pmt.PaymentType == PaymentType.CustomerPayment ? "Received" : "Sent")
+                            </span>
+                        </td>
+                        <td>@(pmt.CustomerName ?? pmt.VendorName ?? "—")</td>
+                        <td class="bs-amount">@pmt.Amount.ToString("N2")</td>
+                        <td class="small">@pmt.PaymentMethod</td>
+                        <td><span class="bs-badge bs-badge-@pmt.Status.ToString().ToLower()">@pmt.Status</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] PaymentService PaymentSvc { get; set; } = default!;
+
+    private List<Payment> payments = new();
+    private string typeFilter = "";
+    private string statusFilter = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            PaymentType? type = string.IsNullOrEmpty(typeFilter) ? null : Enum.Parse<PaymentType>(typeFilter);
+            PaymentStatus? status = string.IsNullOrEmpty(statusFilter) ? null : Enum.Parse<PaymentStatus>(statusFilter);
+            payments = await PaymentSvc.GetPaymentsAsync(CompanyId!, type, status);
+        }
+        catch { }
+    }
+}

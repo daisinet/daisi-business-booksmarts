@@ -1,0 +1,97 @@
+@page "/bills"
+
+<h1 class="bs-page-title">Bills</h1>
+<p class="bs-page-subtitle">Manage vendor bills</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-file-invoice-dollar"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" style="width: auto;" @bind="statusFilter" @bind:after="LoadData">
+                <option value="">All Statuses</option>
+                @foreach (var s in Enum.GetValues<BillStatus>())
+                {
+                    <option value="@s">@s</option>
+                }
+            </select>
+        </div>
+        <div class="bs-toolbar-actions">
+            <a href="bills/new" class="btn btn-primary btn-sm">
+                <i class="fa-duotone fa-plus me-1"></i> New Bill
+            </a>
+        </div>
+    </div>
+
+    @if (bills.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-file-invoice-dollar"></i>
+            <h4>No bills</h4>
+            <p>Record your first bill to start tracking payables.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table bs-table-striped">
+            <thead>
+                <tr>
+                    <th>Number</th>
+                    <th>Date</th>
+                    <th>Vendor</th>
+                    <th>Due Date</th>
+                    <th class="bs-amount">Total</th>
+                    <th class="bs-amount">Balance</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var bill in bills)
+                {
+                    <tr style="cursor: pointer;" @onclick="() => Nav.NavigateTo(GetUrl(bill.id))">
+                        <td><a href="bills/@bill.id">@bill.BillNumber</a></td>
+                        <td>@bill.BillDate.ToString("MM/dd/yyyy")</td>
+                        <td>@bill.VendorName</td>
+                        <td>@bill.DueDate.ToString("MM/dd/yyyy")</td>
+                        <td class="bs-amount">@bill.Total.ToString("N2")</td>
+                        <td class="bs-amount">@bill.BalanceDue.ToString("N2")</td>
+                        <td><span class="bs-badge bs-badge-@bill.Status.ToString().ToLower()">@bill.Status</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] BillService Bills { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    private List<Bill> bills = new();
+    private string statusFilter = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            BillStatus? status = string.IsNullOrEmpty(statusFilter) ? null : Enum.Parse<BillStatus>(statusFilter);
+            bills = await Bills.GetBillsAsync(CompanyId!, status);
+        }
+        catch { }
+    }
+
+    private string GetUrl(string id) => $"bills/{id}";
+}

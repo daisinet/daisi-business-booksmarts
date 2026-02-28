@@ -1,0 +1,140 @@
+@using BookSmarts.Services
+@inject IJSRuntime JS
+
+<div class="bs-pin-overlay">
+    <div class="bs-pin-card">
+        <div class="text-center mb-4">
+            <i class="fa-duotone fa-lock-keyhole bs-pin-icon"></i>
+            <h4 class="mt-3">Enter Your PIN</h4>
+            <p class="text-muted small">Enter your 6-digit PIN to unlock your encrypted data.</p>
+        </div>
+
+        <div class="bs-pin-inputs d-flex justify-content-center gap-2 mb-3">
+            @for (int i = 0; i < 6; i++)
+            {
+                var index = i;
+                <input type="password"
+                       maxlength="1"
+                       inputmode="numeric"
+                       class="bs-pin-digit @(hasError ? "bs-pin-error" : "")"
+                       value="@digits[index]"
+                       @oninput="e => OnDigitInput(index, e)"
+                       @onkeydown="e => OnKeyDown(index, e)"
+                       id="pin-digit-@index"
+                       disabled="@verifying" />
+            }
+        </div>
+
+        @if (hasError)
+        {
+            <div class="text-danger text-center small mb-3">
+                <i class="fa-duotone fa-circle-exclamation me-1"></i>
+                @errorMessage
+            </div>
+        }
+
+        @if (verifying)
+        {
+            <div class="text-center mb-3">
+                <span class="spinner-border spinner-border-sm me-1"></span> Verifying...
+            </div>
+        }
+
+        <div class="text-center">
+            <button class="btn btn-link btn-sm text-muted" @onclick="ShowRecovery">
+                Forgot PIN?
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnUnlocked { get; set; }
+    [Parameter] public EventCallback OnForgotPin { get; set; }
+    [Parameter] public string AccountId { get; set; } = "";
+    [Inject] EncryptionSetupService SetupService { get; set; } = default!;
+
+    private string[] digits = new string[6];
+    private bool hasError;
+    private string errorMessage = "";
+    private bool verifying;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("eval", "document.getElementById('pin-digit-0')?.focus()");
+        }
+    }
+
+    private async Task OnDigitInput(int index, ChangeEventArgs e)
+    {
+        hasError = false;
+        var value = e.Value?.ToString() ?? "";
+
+        // Only accept digits
+        if (value.Length > 0 && !char.IsDigit(value[^1]))
+            return;
+
+        // Take only the last character (in case of paste or double-type)
+        digits[index] = value.Length > 0 ? value[^1].ToString() : "";
+
+        // Auto-advance to next input
+        if (!string.IsNullOrEmpty(digits[index]) && index < 5)
+        {
+            await JS.InvokeVoidAsync("eval", $"document.getElementById('pin-digit-{index + 1}')?.focus()");
+        }
+
+        // Check if all 6 digits are filled
+        if (digits.All(d => !string.IsNullOrEmpty(d)))
+        {
+            var pin = string.Join("", digits);
+            await VerifyPin(pin);
+        }
+    }
+
+    private async Task OnKeyDown(int index, KeyboardEventArgs e)
+    {
+        if (e.Key == "Backspace" && string.IsNullOrEmpty(digits[index]) && index > 0)
+        {
+            digits[index - 1] = "";
+            await JS.InvokeVoidAsync("eval", $"document.getElementById('pin-digit-{index - 1}')?.focus()");
+        }
+    }
+
+    private async Task VerifyPin(string pin)
+    {
+        verifying = true;
+        StateHasChanged();
+
+        try
+        {
+            var success = await SetupService.UnlockWithPinAsync(AccountId, pin);
+            if (success)
+            {
+                await OnUnlocked.InvokeAsync();
+            }
+            else
+            {
+                hasError = true;
+                errorMessage = "Incorrect PIN. Please try again.";
+                digits = new string[6];
+                await JS.InvokeVoidAsync("eval", "document.getElementById('pin-digit-0')?.focus()");
+            }
+        }
+        catch (Exception ex)
+        {
+            hasError = true;
+            errorMessage = $"Error: {ex.Message}";
+            digits = new string[6];
+            await JS.InvokeVoidAsync("eval", "document.getElementById('pin-digit-0')?.focus()");
+        }
+
+        verifying = false;
+    }
+
+    private async Task ShowRecovery()
+    {
+        await OnForgotPin.InvokeAsync();
+    }
+}

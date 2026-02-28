@@ -1,0 +1,209 @@
+@page "/journal-entries/new"
+
+<h1 class="bs-page-title">New Journal Entry</h1>
+<p class="bs-page-subtitle">Create a balanced double-entry journal entry</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-pen-to-square"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-card" style="max-width: 900px;">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Date</label>
+                <input type="date" class="form-control" @bind="entryDate" />
+            </div>
+            <div class="col-md-8">
+                <label class="form-label">Description</label>
+                <input type="text" class="form-control" @bind="description" placeholder="Description of the journal entry" />
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Memo</label>
+            <textarea class="form-control" rows="2" @bind="memo" placeholder="Optional memo"></textarea>
+        </div>
+
+        <h6 class="mt-4 mb-2">Lines</h6>
+        <table class="bs-table">
+            <thead>
+                <tr>
+                    <th style="width: 40%;">Account</th>
+                    <th>Description</th>
+                    <th class="bs-amount" style="width: 130px;">Debit</th>
+                    <th class="bs-amount" style="width: 130px;">Credit</th>
+                    <th style="width: 40px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (int i = 0; i < lines.Count; i++)
+                {
+                    var idx = i;
+                    <tr>
+                        <td>
+                            <select class="form-select form-select-sm" @bind="lines[idx].AccountId" @bind:after="() => OnAccountSelected(idx)">
+                                <option value="">— Select Account —</option>
+                                @foreach (var acct in accounts)
+                                {
+                                    <option value="@acct.id">@acct.AccountNumber — @acct.Name</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm" @bind="lines[idx].Description" />
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm text-end" @bind="lines[idx].Debit" step="0.01" min="0" />
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm text-end" @bind="lines[idx].Credit" step="0.01" min="0" />
+                        </td>
+                        <td>
+                            @if (lines.Count > 2)
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveLine(idx)">
+                                    <i class="fa-duotone fa-times"></i>
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="2" class="text-end fw-bold">Totals:</td>
+                    <td class="bs-amount fw-bold @(IsBalanced ? "" : "text-danger")">@TotalDebit.ToString("N2")</td>
+                    <td class="bs-amount fw-bold @(IsBalanced ? "" : "text-danger")">@TotalCredit.ToString("N2")</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <button class="btn btn-sm btn-outline-secondary mt-2" @onclick="AddLine">
+            <i class="fa-duotone fa-plus me-1"></i> Add Line
+        </button>
+
+        @if (!IsBalanced && TotalDebit + TotalCredit > 0)
+        {
+            <div class="alert alert-warning mt-3">
+                <i class="fa-duotone fa-triangle-exclamation me-1"></i>
+                Entry is not balanced. Difference: @Math.Abs(TotalDebit - TotalCredit).ToString("N2")
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger mt-3">@error</div>
+        }
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-primary" @onclick="SaveDraft" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save as Draft
+            </button>
+            <button class="btn btn-success" @onclick="SaveAndPost" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save & Post
+            </button>
+            <a href="journal-entries" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] AccountingService Accounting { get; set; } = default!;
+    [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    private List<ChartOfAccountEntry> accounts = new();
+    private List<JournalLine> lines = new() { new(), new() };
+    private DateTime entryDate = DateTime.Today;
+    private string description = "";
+    private string memo = "";
+    private bool saving;
+    private string? error;
+
+    private decimal TotalDebit => lines.Sum(l => l.Debit);
+    private decimal TotalCredit => lines.Sum(l => l.Credit);
+    private bool IsBalanced => TotalDebit == TotalCredit && TotalDebit > 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        try
+        {
+            accounts = await CoaService.GetChartOfAccountsAsync(CompanyId!);
+        }
+        catch { }
+    }
+
+    private void AddLine() => lines.Add(new JournalLine());
+
+    private void RemoveLine(int idx)
+    {
+        if (lines.Count > 2) lines.RemoveAt(idx);
+    }
+
+    private void OnAccountSelected(int idx)
+    {
+        var acct = accounts.FirstOrDefault(a => a.id == lines[idx].AccountId);
+        if (acct != null)
+        {
+            lines[idx].AccountNumber = acct.AccountNumber;
+            lines[idx].AccountName = acct.Name;
+        }
+    }
+
+    private async Task SaveDraft()
+    {
+        var entry = await SaveEntry();
+        if (entry != null)
+            Nav.NavigateTo($"journal-entries/{entry.id}");
+    }
+
+    private async Task SaveAndPost()
+    {
+        var entry = await SaveEntry();
+        if (entry != null)
+        {
+            try
+            {
+                await Accounting.PostJournalEntryAsync(entry.id, CompanyId!);
+                Nav.NavigateTo($"journal-entries/{entry.id}");
+            }
+            catch (Exception ex) { error = ex.Message; }
+        }
+    }
+
+    private async Task<JournalEntry?> SaveEntry()
+    {
+        error = null;
+        saving = true;
+        try
+        {
+            var entry = new JournalEntry
+            {
+                CompanyId = CompanyId!,
+                EntryDate = entryDate,
+                Description = description,
+                Memo = memo,
+                Lines = lines.Where(l => !string.IsNullOrEmpty(l.AccountId)).ToList()
+            };
+
+            var result = await Accounting.CreateJournalEntryAsync(entry);
+            saving = false;
+            return result;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            saving = false;
+            return null;
+        }
+    }
+}

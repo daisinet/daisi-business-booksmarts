@@ -1,0 +1,184 @@
+@page "/reports/income-statement"
+
+<h1 class="bs-page-title">Income Statement</h1>
+<p class="bs-page-subtitle">@(CashBasis ? "Cash Basis" : "Accrual Basis") &mdash; @fromDate.ToString("MMMM d, yyyy") to @toDate.ToString("MMMM d, yyyy")</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-chart-line"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select class="form-select form-select-sm" style="width: auto;" @bind="selectedPreset" @bind:after="ApplyPreset">
+                <option value="">Custom Range</option>
+                <option value="ytd">Year to Date</option>
+                <option value="thisMonth">This Month</option>
+                <option value="lastMonth">Last Month</option>
+                <option value="thisQuarter">This Quarter</option>
+                <option value="lastQuarter">Last Quarter</option>
+                <option value="thisYear">This Year</option>
+                <option value="lastYear">Last Year</option>
+                <option value="last12">Last 12 Months</option>
+            </select>
+            <label class="form-label mb-0 small">From:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="fromDate" @bind:after="OnCustomDateChanged" />
+            <label class="form-label mb-0 small">To:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="toDate" @bind:after="OnCustomDateChanged" />
+        </div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="Print">
+                <i class="fa-duotone fa-print me-1"></i> Print
+            </button>
+        </div>
+    </div>
+
+    @if (report == null)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-chart-line"></i>
+            <h4>No data</h4>
+            <p>Post journal entries to generate an income statement.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table">
+            <thead>
+                <tr>
+                    <th style="width: 100px;">Account</th>
+                    <th>Name</th>
+                    <th class="bs-amount" style="width: 150px;">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                @* ── Revenue ── *@
+                <tr>
+                    <td colspan="3" class="fw-bold small text-uppercase pt-3 bs-cat-revenue" style="border-bottom: 2px solid currentColor;">
+                        Revenue
+                    </td>
+                </tr>
+                @foreach (var sect in report.RevenueSections)
+                {
+                    <tr>
+                        <td colspan="3" class="fw-semibold small ps-3 pt-2">@sect.Title</td>
+                    </tr>
+                    @foreach (var line in sect.Lines)
+                    {
+                        <tr>
+                            <td class="ps-4"><code>@line.AccountNumber</code></td>
+                            <td>@line.AccountName</td>
+                            <td class="bs-amount">@line.Balance.ToString("N2")</td>
+                        </tr>
+                    }
+                    <tr class="fw-semibold" style="border-top: 1px solid var(--bs-border-color, #ccc);">
+                        <td colspan="2" class="text-end small ps-3">Total @sect.Title:</td>
+                        <td class="bs-amount">@sect.Total.ToString("N2")</td>
+                    </tr>
+                }
+                <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                    <td colspan="2" class="text-end">Total Revenue:</td>
+                    <td class="bs-amount">@report.TotalRevenue.ToString("N2")</td>
+                </tr>
+
+                @* ── Expenses ── *@
+                <tr>
+                    <td colspan="3" class="fw-bold small text-uppercase pt-4 bs-cat-expense" style="border-bottom: 2px solid currentColor;">
+                        Expenses
+                    </td>
+                </tr>
+                @foreach (var sect in report.ExpenseSections)
+                {
+                    <tr>
+                        <td colspan="3" class="fw-semibold small ps-3 pt-2">@sect.Title</td>
+                    </tr>
+                    @foreach (var line in sect.Lines)
+                    {
+                        <tr>
+                            <td class="ps-4"><code>@line.AccountNumber</code></td>
+                            <td>@line.AccountName</td>
+                            <td class="bs-amount">@line.Balance.ToString("N2")</td>
+                        </tr>
+                    }
+                    <tr class="fw-semibold" style="border-top: 1px solid var(--bs-border-color, #ccc);">
+                        <td colspan="2" class="text-end small ps-3">Total @sect.Title:</td>
+                        <td class="bs-amount">@sect.Total.ToString("N2")</td>
+                    </tr>
+                }
+                <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                    <td colspan="2" class="text-end">Total Expenses:</td>
+                    <td class="bs-amount">@report.TotalExpenses.ToString("N2")</td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold" style="border-top: 3px double var(--bs-border-color, #000);">
+                    <td colspan="2" class="text-end">Net Income:</td>
+                    <td class="bs-amount @(report.NetIncome >= 0 ? "text-success" : "text-danger")">
+                        @report.NetIncome.ToString("N2")
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [CascadingParameter(Name = "CashBasis")] bool CashBasis { get; set; }
+    [Inject] FinancialStatementService Financials { get; set; } = default!;
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    private IncomeStatementReport? report;
+    private string selectedPreset = "ytd";
+    private DateTime fromDate = new(DateTime.Today.Year, 1, 1);
+    private DateTime toDate = DateTime.Today;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task ApplyPreset()
+    {
+        var today = DateTime.Today;
+        (fromDate, toDate) = selectedPreset switch
+        {
+            "ytd" => (new DateTime(today.Year, 1, 1), today),
+            "thisMonth" => (new DateTime(today.Year, today.Month, 1), today),
+            "lastMonth" => (new DateTime(today.Year, today.Month, 1).AddMonths(-1),
+                            new DateTime(today.Year, today.Month, 1).AddDays(-1)),
+            "thisQuarter" => (new DateTime(today.Year, (((today.Month - 1) / 3) * 3) + 1, 1), today),
+            "lastQuarter" => (new DateTime(today.Year, (((today.Month - 1) / 3) * 3) + 1, 1).AddMonths(-3),
+                              new DateTime(today.Year, (((today.Month - 1) / 3) * 3) + 1, 1).AddDays(-1)),
+            "thisYear" => (new DateTime(today.Year, 1, 1), new DateTime(today.Year, 12, 31)),
+            "lastYear" => (new DateTime(today.Year - 1, 1, 1), new DateTime(today.Year - 1, 12, 31)),
+            "last12" => (today.AddMonths(-12).AddDays(1), today),
+            _ => (fromDate, toDate)
+        };
+        await LoadData();
+    }
+
+    private async Task OnCustomDateChanged()
+    {
+        selectedPreset = "";
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            report = await Financials.GetIncomeStatementAsync(CompanyId!, fromDate, toDate, CashBasis);
+            if (report.RevenueSections.Count == 0 && report.ExpenseSections.Count == 0)
+                report = null;
+        }
+        catch { report = null; }
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+}

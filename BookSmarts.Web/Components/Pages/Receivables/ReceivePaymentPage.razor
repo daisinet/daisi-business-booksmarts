@@ -1,0 +1,249 @@
+@page "/payments/receive"
+
+<h1 class="bs-page-title">Receive Payment</h1>
+<p class="bs-page-subtitle">Record a payment received from a customer</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-hand-holding-dollar"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-card" style="max-width: 900px;">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Customer *</label>
+                <select class="form-select" @bind="selectedCustomerId" @bind:after="OnCustomerSelected">
+                    <option value="">— Select Customer —</option>
+                    @foreach (var c in customers)
+                    {
+                        <option value="@c.id">@c.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Payment Date</label>
+                <input type="date" class="form-control" @bind="paymentDate" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Payment Method</label>
+                <select class="form-select" @bind="paymentMethod">
+                    @foreach (var m in Enum.GetValues<PaymentMethod>())
+                    {
+                        <option value="@m">@m</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Bank Account *</label>
+                <select class="form-select" @bind="bankAccountId" @bind:after="OnBankAccountSelected">
+                    <option value="">— Select Account —</option>
+                    @foreach (var a in bankAccounts)
+                    {
+                        <option value="@a.id">@a.AccountNumber — @a.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Amount *</label>
+                <input type="number" class="form-control" @bind="amount" step="0.01" min="0" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Reference #</label>
+                <input type="text" class="form-control" @bind="referenceNumber" placeholder="Check # or ref" />
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea class="form-control" rows="2" @bind="notes"></textarea>
+        </div>
+
+        @if (openInvoices.Count > 0)
+        {
+            <h6 class="mt-4 mb-2">Apply to Invoices</h6>
+            <table class="bs-table">
+                <thead>
+                    <tr>
+                        <th>Invoice</th>
+                        <th>Date</th>
+                        <th>Due</th>
+                        <th class="bs-amount">Total</th>
+                        <th class="bs-amount">Balance</th>
+                        <th class="bs-amount" style="width: 150px;">Apply</th>
+                        <th style="width: 80px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var inv in openInvoices)
+                    {
+                        <tr>
+                            <td>@inv.InvoiceNumber</td>
+                            <td>@inv.InvoiceDate.ToString("MM/dd")</td>
+                            <td class="@(inv.DueDate < DateTime.Today ? "text-danger" : "")">@inv.DueDate.ToString("MM/dd")</td>
+                            <td class="bs-amount">@inv.Total.ToString("N2")</td>
+                            <td class="bs-amount">@inv.BalanceDue.ToString("N2")</td>
+                            <td>
+                                <input type="number" class="form-control form-control-sm text-end"
+                                       value="@GetAllocation(inv.id)"
+                                       @onchange="(e) => SetAllocation(inv.id, inv.InvoiceNumber, e)" step="0.01" min="0" />
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => PayInFull(inv)">Full</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td colspan="5" class="text-end">Total Applied:</td>
+                        <td class="bs-amount">@TotalAllocated.ToString("N2")</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        }
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger mt-3">@error</div>
+        }
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-primary" @onclick="Save" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save Payment
+            </button>
+            <a href="payments" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] PaymentService PaymentSvc { get; set; } = default!;
+    [Inject] InvoiceService InvoiceSvc { get; set; } = default!;
+    [Inject] ContactService Contacts { get; set; } = default!;
+    [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    [SupplyParameterFromQuery] public string? InvoiceId { get; set; }
+
+    private List<Customer> customers = new();
+    private List<ChartOfAccountEntry> bankAccounts = new();
+    private List<Invoice> openInvoices = new();
+    private Dictionary<string, (string number, decimal amount)> allocations = new();
+
+    private string selectedCustomerId = "";
+    private DateTime paymentDate = DateTime.Today;
+    private PaymentMethod paymentMethod = PaymentMethod.BankTransfer;
+    private string bankAccountId = "";
+    private string bankAccountNumber = "";
+    private string bankAccountName = "";
+    private decimal amount;
+    private string? referenceNumber;
+    private string? notes;
+    private bool saving;
+    private string? error;
+
+    private decimal TotalAllocated => allocations.Values.Sum(a => a.amount);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        try
+        {
+            customers = await Contacts.GetCustomersAsync(CompanyId!, activeOnly: true);
+            var allAccounts = await CoaService.GetChartOfAccountsAsync(CompanyId!);
+            bankAccounts = allAccounts.Where(a => a.SubType is AccountSubType.Cash or AccountSubType.Bank).ToList();
+
+            if (!string.IsNullOrEmpty(InvoiceId))
+            {
+                var inv = await InvoiceSvc.GetInvoiceAsync(InvoiceId, CompanyId!);
+                if (inv != null)
+                {
+                    selectedCustomerId = inv.CustomerId;
+                    amount = inv.BalanceDue;
+                    await LoadOpenInvoices();
+                    PayInFull(inv);
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task OnCustomerSelected()
+    {
+        allocations.Clear();
+        await LoadOpenInvoices();
+    }
+
+    private async Task LoadOpenInvoices()
+    {
+        if (!string.IsNullOrEmpty(selectedCustomerId))
+            openInvoices = await InvoiceSvc.GetOpenInvoicesAsync(CompanyId!, selectedCustomerId);
+        else
+            openInvoices.Clear();
+    }
+
+    private void OnBankAccountSelected()
+    {
+        var acct = bankAccounts.FirstOrDefault(a => a.id == bankAccountId);
+        if (acct != null) { bankAccountNumber = acct.AccountNumber; bankAccountName = acct.Name; }
+    }
+
+    private decimal GetAllocation(string invoiceId) => allocations.TryGetValue(invoiceId, out var a) ? a.amount : 0;
+
+    private void SetAllocation(string invoiceId, string number, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var val) && val > 0)
+            allocations[invoiceId] = (number, val);
+        else
+            allocations.Remove(invoiceId);
+    }
+
+    private void PayInFull(Invoice inv)
+    {
+        allocations[inv.id] = (inv.InvoiceNumber, inv.BalanceDue);
+    }
+
+    private async Task Save()
+    {
+        error = null;
+        saving = true;
+        try
+        {
+            var customer = customers.FirstOrDefault(c => c.id == selectedCustomerId);
+            var payment = new Payment
+            {
+                CompanyId = CompanyId!,
+                PaymentDate = paymentDate,
+                PaymentType = PaymentType.CustomerPayment,
+                CustomerId = selectedCustomerId,
+                CustomerName = customer?.Name ?? "",
+                Amount = amount,
+                PaymentMethod = paymentMethod,
+                BankAccountId = bankAccountId,
+                BankAccountNumber = bankAccountNumber,
+                BankAccountName = bankAccountName,
+                ReferenceNumber = referenceNumber,
+                Notes = notes,
+                Allocations = allocations.Select(kv => new PaymentAllocation
+                {
+                    InvoiceId = kv.Key,
+                    InvoiceNumber = kv.Value.number,
+                    Amount = kv.Value.amount
+                }).ToList()
+            };
+
+            var result = await PaymentSvc.ReceiveCustomerPaymentAsync(payment);
+            Nav.NavigateTo("payments");
+        }
+        catch (Exception ex) { error = ex.Message; }
+        saving = false;
+    }
+}

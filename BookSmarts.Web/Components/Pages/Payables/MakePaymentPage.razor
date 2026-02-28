@@ -1,0 +1,249 @@
+@page "/payments/make"
+
+<h1 class="bs-page-title">Make Payment</h1>
+<p class="bs-page-subtitle">Record a payment to a vendor</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-money-check-dollar"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-card" style="max-width: 900px;">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Vendor *</label>
+                <select class="form-select" @bind="selectedVendorId" @bind:after="OnVendorSelected">
+                    <option value="">— Select Vendor —</option>
+                    @foreach (var v in vendors)
+                    {
+                        <option value="@v.id">@v.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Payment Date</label>
+                <input type="date" class="form-control" @bind="paymentDate" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Payment Method</label>
+                <select class="form-select" @bind="paymentMethod">
+                    @foreach (var m in Enum.GetValues<PaymentMethod>())
+                    {
+                        <option value="@m">@m</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Bank Account *</label>
+                <select class="form-select" @bind="bankAccountId" @bind:after="OnBankAccountSelected">
+                    <option value="">— Select Account —</option>
+                    @foreach (var a in bankAccounts)
+                    {
+                        <option value="@a.id">@a.AccountNumber — @a.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Amount *</label>
+                <input type="number" class="form-control" @bind="amount" step="0.01" min="0" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Reference #</label>
+                <input type="text" class="form-control" @bind="referenceNumber" placeholder="Check # or ref" />
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea class="form-control" rows="2" @bind="notes"></textarea>
+        </div>
+
+        @if (openBills.Count > 0)
+        {
+            <h6 class="mt-4 mb-2">Apply to Bills</h6>
+            <table class="bs-table">
+                <thead>
+                    <tr>
+                        <th>Bill</th>
+                        <th>Date</th>
+                        <th>Due</th>
+                        <th class="bs-amount">Total</th>
+                        <th class="bs-amount">Balance</th>
+                        <th class="bs-amount" style="width: 150px;">Apply</th>
+                        <th style="width: 80px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var bill in openBills)
+                    {
+                        <tr>
+                            <td>@bill.BillNumber</td>
+                            <td>@bill.BillDate.ToString("MM/dd")</td>
+                            <td class="@(bill.DueDate < DateTime.Today ? "text-danger" : "")">@bill.DueDate.ToString("MM/dd")</td>
+                            <td class="bs-amount">@bill.Total.ToString("N2")</td>
+                            <td class="bs-amount">@bill.BalanceDue.ToString("N2")</td>
+                            <td>
+                                <input type="number" class="form-control form-control-sm text-end"
+                                       value="@GetAllocation(bill.id)"
+                                       @onchange="(e) => SetAllocation(bill.id, bill.BillNumber, e)" step="0.01" min="0" />
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => PayInFull(bill)">Full</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td colspan="5" class="text-end">Total Applied:</td>
+                        <td class="bs-amount">@TotalAllocated.ToString("N2")</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        }
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger mt-3">@error</div>
+        }
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-primary" @onclick="Save" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save Payment
+            </button>
+            <a href="payments" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] PaymentService PaymentSvc { get; set; } = default!;
+    [Inject] BillService BillSvc { get; set; } = default!;
+    [Inject] ContactService Contacts { get; set; } = default!;
+    [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    [SupplyParameterFromQuery] public string? BillId { get; set; }
+
+    private List<Vendor> vendors = new();
+    private List<ChartOfAccountEntry> bankAccounts = new();
+    private List<Bill> openBills = new();
+    private Dictionary<string, (string number, decimal amount)> allocations = new();
+
+    private string selectedVendorId = "";
+    private DateTime paymentDate = DateTime.Today;
+    private PaymentMethod paymentMethod = PaymentMethod.BankTransfer;
+    private string bankAccountId = "";
+    private string bankAccountNumber = "";
+    private string bankAccountName = "";
+    private decimal amount;
+    private string? referenceNumber;
+    private string? notes;
+    private bool saving;
+    private string? error;
+
+    private decimal TotalAllocated => allocations.Values.Sum(a => a.amount);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        try
+        {
+            vendors = await Contacts.GetVendorsAsync(CompanyId!, activeOnly: true);
+            var allAccounts = await CoaService.GetChartOfAccountsAsync(CompanyId!);
+            bankAccounts = allAccounts.Where(a => a.SubType is AccountSubType.Cash or AccountSubType.Bank).ToList();
+
+            if (!string.IsNullOrEmpty(BillId))
+            {
+                var bill = await BillSvc.GetBillAsync(BillId, CompanyId!);
+                if (bill != null)
+                {
+                    selectedVendorId = bill.VendorId;
+                    amount = bill.BalanceDue;
+                    await LoadOpenBills();
+                    PayInFull(bill);
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task OnVendorSelected()
+    {
+        allocations.Clear();
+        await LoadOpenBills();
+    }
+
+    private async Task LoadOpenBills()
+    {
+        if (!string.IsNullOrEmpty(selectedVendorId))
+            openBills = await BillSvc.GetOpenBillsAsync(CompanyId!, selectedVendorId);
+        else
+            openBills.Clear();
+    }
+
+    private void OnBankAccountSelected()
+    {
+        var acct = bankAccounts.FirstOrDefault(a => a.id == bankAccountId);
+        if (acct != null) { bankAccountNumber = acct.AccountNumber; bankAccountName = acct.Name; }
+    }
+
+    private decimal GetAllocation(string billId) => allocations.TryGetValue(billId, out var a) ? a.amount : 0;
+
+    private void SetAllocation(string billId, string number, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var val) && val > 0)
+            allocations[billId] = (number, val);
+        else
+            allocations.Remove(billId);
+    }
+
+    private void PayInFull(Bill bill)
+    {
+        allocations[bill.id] = (bill.BillNumber, bill.BalanceDue);
+    }
+
+    private async Task Save()
+    {
+        error = null;
+        saving = true;
+        try
+        {
+            var vendor = vendors.FirstOrDefault(v => v.id == selectedVendorId);
+            var payment = new Payment
+            {
+                CompanyId = CompanyId!,
+                PaymentDate = paymentDate,
+                PaymentType = PaymentType.VendorPayment,
+                VendorId = selectedVendorId,
+                VendorName = vendor?.Name ?? "",
+                Amount = amount,
+                PaymentMethod = paymentMethod,
+                BankAccountId = bankAccountId,
+                BankAccountNumber = bankAccountNumber,
+                BankAccountName = bankAccountName,
+                ReferenceNumber = referenceNumber,
+                Notes = notes,
+                Allocations = allocations.Select(kv => new PaymentAllocation
+                {
+                    BillId = kv.Key,
+                    BillNumber = kv.Value.number,
+                    Amount = kv.Value.amount
+                }).ToList()
+            };
+
+            await PaymentSvc.MakeVendorPaymentAsync(payment);
+            Nav.NavigateTo("payments");
+        }
+        catch (Exception ex) { error = ex.Message; }
+        saving = false;
+    }
+}

@@ -1,0 +1,97 @@
+@page "/journal-entries"
+
+<h1 class="bs-page-title">Journal Entries</h1>
+<p class="bs-page-subtitle">View and manage double-entry journal entries</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-pen-to-square"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" style="width: auto;" @bind="statusFilter" @bind:after="LoadData">
+                <option value="">All Statuses</option>
+                @foreach (var s in Enum.GetValues<JournalEntryStatus>())
+                {
+                    <option value="@s">@s</option>
+                }
+            </select>
+        </div>
+        <div class="bs-toolbar-actions">
+            <a href="journal-entries/new" class="btn btn-primary btn-sm">
+                <i class="fa-duotone fa-plus me-1"></i> New Journal Entry
+            </a>
+        </div>
+    </div>
+
+    @if (entries.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-pen-to-square"></i>
+            <h4>No journal entries</h4>
+            <p>Create your first journal entry to start recording transactions.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table bs-table-striped">
+            <thead>
+                <tr>
+                    <th>Number</th>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Source</th>
+                    <th class="bs-amount">Debit</th>
+                    <th class="bs-amount">Credit</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in entries)
+                {
+                    <tr style="cursor: pointer;" @onclick="() => Nav.NavigateTo(GetEntryUrl(entry.id))">
+                        <td><a href="journal-entries/@entry.id">@entry.EntryNumber</a></td>
+                        <td>@entry.EntryDate.ToString("MM/dd/yyyy")</td>
+                        <td>@(entry.Description ?? "—")</td>
+                        <td class="small">@entry.SourceType</td>
+                        <td class="bs-amount">@entry.TotalDebit.ToString("N2")</td>
+                        <td class="bs-amount">@entry.TotalCredit.ToString("N2")</td>
+                        <td><span class="bs-badge bs-badge-@entry.Status.ToString().ToLower()">@entry.Status</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] AccountingService Accounting { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    private List<JournalEntry> entries = new();
+    private string statusFilter = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            JournalEntryStatus? status = string.IsNullOrEmpty(statusFilter) ? null : Enum.Parse<JournalEntryStatus>(statusFilter);
+            entries = await Accounting.GetJournalEntriesAsync(CompanyId!, status);
+        }
+        catch { }
+    }
+
+    private string GetEntryUrl(string id) => $"journal-entries/{id}";
+}

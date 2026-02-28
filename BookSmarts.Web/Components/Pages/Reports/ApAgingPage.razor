@@ -1,0 +1,127 @@
+@page "/reports/ap-aging"
+
+<h1 class="bs-page-title">AP Aging Report</h1>
+<p class="bs-page-subtitle">Accounts Payable aging by vendor</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-hourglass-half"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center">
+            <label class="form-label mb-0 small">As of:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="asOfDate" @bind:after="LoadData" />
+        </div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="Print">
+                <i class="fa-duotone fa-print me-1"></i> Print
+            </button>
+        </div>
+    </div>
+
+    @if (summaries.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-hourglass-half"></i>
+            <h4>No outstanding payables</h4>
+            <p>Record bills from vendors to see aging data.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table">
+            <thead>
+                <tr>
+                    <th>Vendor</th>
+                    <th class="bs-amount">Current</th>
+                    <th class="bs-amount">1-30</th>
+                    <th class="bs-amount">31-60</th>
+                    <th class="bs-amount">61-90</th>
+                    <th class="bs-amount">90+</th>
+                    <th class="bs-amount">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in summaries)
+                {
+                    <tr style="cursor: pointer;" @onclick="() => ToggleDetail(s.ContactId)">
+                        <td><strong>@s.ContactName</strong></td>
+                        <td class="bs-amount">@FormatAmount(s.Current)</td>
+                        <td class="bs-amount">@FormatAmount(s.Days1To30)</td>
+                        <td class="bs-amount">@FormatAmount(s.Days31To60)</td>
+                        <td class="bs-amount">@FormatAmount(s.Days61To90)</td>
+                        <td class="bs-amount">@FormatAmount(s.Days90Plus)</td>
+                        <td class="bs-amount fw-bold">@s.Total.ToString("N2")</td>
+                    </tr>
+                    @if (expandedContact == s.ContactId)
+                    {
+                        @foreach (var line in lines.Where(l => l.ContactId == s.ContactId))
+                        {
+                            <tr class="small" style="background: var(--bs-body-bg); opacity: 0.85;">
+                                <td class="ps-4">
+                                    <a href="bills/@line.DocumentId">@line.DocumentNumber</a>
+                                    <span class="text-muted ms-2">@line.DocumentDate.ToString("MM/dd") — due @line.DueDate.ToString("MM/dd")</span>
+                                </td>
+                                <td colspan="5"></td>
+                                <td class="bs-amount">@line.BalanceDue.ToString("N2")</td>
+                            </tr>
+                        }
+                    }
+                }
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold" style="border-top: 3px double var(--bs-border-color, #000);">
+                    <td class="text-end">Totals:</td>
+                    <td class="bs-amount">@FormatAmount(summaries.Sum(s => s.Current))</td>
+                    <td class="bs-amount">@FormatAmount(summaries.Sum(s => s.Days1To30))</td>
+                    <td class="bs-amount">@FormatAmount(summaries.Sum(s => s.Days31To60))</td>
+                    <td class="bs-amount">@FormatAmount(summaries.Sum(s => s.Days61To90))</td>
+                    <td class="bs-amount">@FormatAmount(summaries.Sum(s => s.Days90Plus))</td>
+                    <td class="bs-amount">@summaries.Sum(s => s.Total).ToString("N2")</td>
+                </tr>
+            </tfoot>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] AgingService Aging { get; set; } = default!;
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    private List<AgingReportLine> lines = new();
+    private List<AgingReportSummary> summaries = new();
+    private DateTime asOfDate = DateTime.Today;
+    private string? expandedContact;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            var result = await Aging.GetApAgingReportAsync(CompanyId!, asOfDate);
+            lines = result.Lines;
+            summaries = result.Summaries;
+        }
+        catch { }
+    }
+
+    private void ToggleDetail(string contactId)
+    {
+        expandedContact = expandedContact == contactId ? null : contactId;
+    }
+
+    private static string FormatAmount(decimal amount) => amount > 0 ? amount.ToString("N2") : "";
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+}

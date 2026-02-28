@@ -1,0 +1,216 @@
+@page "/reports/cash-flow"
+
+<h1 class="bs-page-title">Statement of Cash Flows</h1>
+<p class="bs-page-subtitle">@fromDate.ToString("MMMM d, yyyy") to @toDate.ToString("MMMM d, yyyy")</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-money-bill-wave"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select class="form-select form-select-sm" style="width: auto;" @bind="selectedPreset" @bind:after="ApplyPreset">
+                <option value="">Custom Range</option>
+                <option value="ytd">Year to Date</option>
+                <option value="thisMonth">This Month</option>
+                <option value="lastMonth">Last Month</option>
+                <option value="thisQuarter">This Quarter</option>
+                <option value="lastQuarter">Last Quarter</option>
+                <option value="thisYear">This Year</option>
+                <option value="lastYear">Last Year</option>
+                <option value="last12">Last 12 Months</option>
+            </select>
+            <label class="form-label mb-0 small">From:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="fromDate" @bind:after="OnCustomDateChanged" />
+            <label class="form-label mb-0 small">To:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="toDate" @bind:after="OnCustomDateChanged" />
+        </div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="Print">
+                <i class="fa-duotone fa-print me-1"></i> Print
+            </button>
+        </div>
+    </div>
+
+    @if (report == null)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-money-bill-wave"></i>
+            <h4>No data</h4>
+            <p>Post journal entries to generate a statement of cash flows.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th class="bs-amount" style="width: 150px;">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                @* ── Operating Activities ── *@
+                <tr>
+                    <td colspan="2" class="fw-bold small text-uppercase pt-3" style="border-bottom: 2px solid currentColor;">
+                        Cash Flows from Operating Activities
+                    </td>
+                </tr>
+                @foreach (var item in report.OperatingActivities)
+                {
+                    <tr>
+                        <td class="ps-3">
+                            @item.Label
+                            @if (!string.IsNullOrEmpty(item.AccountNumber))
+                            {
+                                <code class="ms-1 small text-muted">(@item.AccountNumber)</code>
+                            }
+                        </td>
+                        <td class="bs-amount @(item.Amount < 0 ? "text-danger" : "")">@item.Amount.ToString("N2")</td>
+                    </tr>
+                }
+                <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                    <td class="text-end">Net Cash from Operating Activities:</td>
+                    <td class="bs-amount">@report.NetOperating.ToString("N2")</td>
+                </tr>
+
+                @* ── Investing Activities ── *@
+                <tr>
+                    <td colspan="2" class="fw-bold small text-uppercase pt-4" style="border-bottom: 2px solid currentColor;">
+                        Cash Flows from Investing Activities
+                    </td>
+                </tr>
+                @if (report.InvestingActivities.Count == 0)
+                {
+                    <tr><td class="ps-3 text-muted small" colspan="2">None</td></tr>
+                }
+                else
+                {
+                    @foreach (var item in report.InvestingActivities)
+                    {
+                        <tr>
+                            <td class="ps-3">
+                                @item.Label
+                                @if (!string.IsNullOrEmpty(item.AccountNumber))
+                                {
+                                    <code class="ms-1 small text-muted">(@item.AccountNumber)</code>
+                                }
+                            </td>
+                            <td class="bs-amount @(item.Amount < 0 ? "text-danger" : "")">@item.Amount.ToString("N2")</td>
+                        </tr>
+                    }
+                }
+                <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                    <td class="text-end">Net Cash from Investing Activities:</td>
+                    <td class="bs-amount">@report.NetInvesting.ToString("N2")</td>
+                </tr>
+
+                @* ── Financing Activities ── *@
+                <tr>
+                    <td colspan="2" class="fw-bold small text-uppercase pt-4" style="border-bottom: 2px solid currentColor;">
+                        Cash Flows from Financing Activities
+                    </td>
+                </tr>
+                @if (report.FinancingActivities.Count == 0)
+                {
+                    <tr><td class="ps-3 text-muted small" colspan="2">None</td></tr>
+                }
+                else
+                {
+                    @foreach (var item in report.FinancingActivities)
+                    {
+                        <tr>
+                            <td class="ps-3">
+                                @item.Label
+                                @if (!string.IsNullOrEmpty(item.AccountNumber))
+                                {
+                                    <code class="ms-1 small text-muted">(@item.AccountNumber)</code>
+                                }
+                            </td>
+                            <td class="bs-amount @(item.Amount < 0 ? "text-danger" : "")">@item.Amount.ToString("N2")</td>
+                        </tr>
+                    }
+                }
+                <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                    <td class="text-end">Net Cash from Financing Activities:</td>
+                    <td class="bs-amount">@report.NetFinancing.ToString("N2")</td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr style="border-top: 3px double var(--bs-border-color, #000);">
+                    <td class="text-end fw-semibold">Net Change in Cash:</td>
+                    <td class="bs-amount fw-semibold @(report.NetChange < 0 ? "text-danger" : "")">@report.NetChange.ToString("N2")</td>
+                </tr>
+                <tr>
+                    <td class="text-end">Beginning Cash Balance:</td>
+                    <td class="bs-amount">@report.BeginningCashBalance.ToString("N2")</td>
+                </tr>
+                <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                    <td class="text-end">Ending Cash Balance:</td>
+                    <td class="bs-amount">@report.EndingCashBalance.ToString("N2")</td>
+                </tr>
+            </tfoot>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] FinancialStatementService Financials { get; set; } = default!;
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    private CashFlowReport? report;
+    private string selectedPreset = "ytd";
+    private DateTime fromDate = new(DateTime.Today.Year, 1, 1);
+    private DateTime toDate = DateTime.Today;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task ApplyPreset()
+    {
+        var today = DateTime.Today;
+        (fromDate, toDate) = selectedPreset switch
+        {
+            "ytd" => (new DateTime(today.Year, 1, 1), today),
+            "thisMonth" => (new DateTime(today.Year, today.Month, 1), today),
+            "lastMonth" => (new DateTime(today.Year, today.Month, 1).AddMonths(-1),
+                            new DateTime(today.Year, today.Month, 1).AddDays(-1)),
+            "thisQuarter" => (new DateTime(today.Year, (((today.Month - 1) / 3) * 3) + 1, 1), today),
+            "lastQuarter" => (new DateTime(today.Year, (((today.Month - 1) / 3) * 3) + 1, 1).AddMonths(-3),
+                              new DateTime(today.Year, (((today.Month - 1) / 3) * 3) + 1, 1).AddDays(-1)),
+            "thisYear" => (new DateTime(today.Year, 1, 1), new DateTime(today.Year, 12, 31)),
+            "lastYear" => (new DateTime(today.Year - 1, 1, 1), new DateTime(today.Year - 1, 12, 31)),
+            "last12" => (today.AddMonths(-12).AddDays(1), today),
+            _ => (fromDate, toDate)
+        };
+        await LoadData();
+    }
+
+    private async Task OnCustomDateChanged()
+    {
+        selectedPreset = "";
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            report = await Financials.GetCashFlowStatementAsync(CompanyId!, fromDate, toDate);
+            if (report.OperatingActivities.Count == 0 && report.InvestingActivities.Count == 0 && report.FinancingActivities.Count == 0)
+                report = null;
+        }
+        catch { report = null; }
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+}

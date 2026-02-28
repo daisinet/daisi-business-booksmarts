@@ -1,0 +1,191 @@
+@page "/bills/{Id}"
+
+<h1 class="bs-page-title">Bill @(bill?.BillNumber ?? "")</h1>
+
+@if (loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="MudBlazor.Color.Primary" />
+}
+else if (bill == null)
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-circle-exclamation"></i>
+        <h4>Bill not found</h4>
+        <a href="bills">Back to list</a>
+    </div>
+}
+else
+{
+    <div class="bs-card" style="max-width: 900px;">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <span class="bs-badge bs-badge-@bill.Status.ToString().ToLower() me-2">@bill.Status</span>
+                <span class="small text-muted">Terms: @FormatTerms(bill.PaymentTerms)</span>
+            </div>
+            <div class="d-flex gap-2">
+                @if (bill.Status == BillStatus.Draft)
+                {
+                    <a href="bills/@bill.id/edit" class="btn btn-outline-secondary btn-sm">
+                        <i class="fa-duotone fa-pen me-1"></i> Edit
+                    </a>
+                    <button class="btn btn-success btn-sm" @onclick="Receive" disabled="@acting">
+                        <i class="fa-duotone fa-check me-1"></i> Receive
+                    </button>
+                }
+                @if (bill.Status is BillStatus.Received or BillStatus.PartiallyPaid or BillStatus.Overdue)
+                {
+                    <a href="payments/make?billId=@bill.id" class="btn btn-primary btn-sm">
+                        <i class="fa-duotone fa-money-check-dollar me-1"></i> Make Payment
+                    </a>
+                }
+                @if (bill.Status != BillStatus.Voided && bill.Status != BillStatus.Paid)
+                {
+                    <button class="btn btn-warning btn-sm" @onclick="VoidBill" disabled="@acting">
+                        <i class="fa-duotone fa-ban me-1"></i> Void
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label class="form-label text-muted small">Vendor</label>
+                <div>@bill.VendorName</div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label text-muted small">Bill Date</label>
+                <div>@bill.BillDate.ToString("MMMM d, yyyy")</div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label text-muted small">Due Date</label>
+                <div class="@(bill.DueDate < DateTime.Today && bill.BalanceDue > 0 ? "text-danger fw-bold" : "")">
+                    @bill.DueDate.ToString("MMMM d, yyyy")
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label text-muted small">Vendor Ref #</label>
+                <div>@(bill.VendorReferenceNumber ?? "—")</div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(bill.Notes))
+        {
+            <div class="mb-3">
+                <label class="form-label text-muted small">Notes</label>
+                <div>@bill.Notes</div>
+            </div>
+        }
+
+        <table class="bs-table bs-table-striped mt-3">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Description</th>
+                    <th>Account</th>
+                    <th class="bs-amount">Qty</th>
+                    <th class="bs-amount">Unit Price</th>
+                    <th class="bs-amount">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var line in bill.Lines)
+                {
+                    <tr>
+                        <td>@line.LineNumber</td>
+                        <td>@line.Description</td>
+                        <td><code>@line.AccountNumber</code> @line.AccountName</td>
+                        <td class="bs-amount">@line.Quantity</td>
+                        <td class="bs-amount">@line.UnitPrice.ToString("N2")</td>
+                        <td class="bs-amount">@line.Amount.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold">
+                    <td colspan="5" class="text-end">Total:</td>
+                    <td class="bs-amount">@bill.Total.ToString("N2")</td>
+                </tr>
+                @if (bill.AmountPaid > 0)
+                {
+                    <tr>
+                        <td colspan="5" class="text-end">Amount Paid:</td>
+                        <td class="bs-amount text-success">(@bill.AmountPaid.ToString("N2"))</td>
+                    </tr>
+                    <tr class="fw-bold">
+                        <td colspan="5" class="text-end">Balance Due:</td>
+                        <td class="bs-amount @(bill.BalanceDue > 0 ? "text-danger" : "text-success")">@bill.BalanceDue.ToString("N2")</td>
+                    </tr>
+                }
+            </tfoot>
+        </table>
+
+        @if (!string.IsNullOrEmpty(bill.JournalEntryId))
+        {
+            <div class="mt-3 small">
+                <i class="fa-duotone fa-link me-1 text-muted"></i>
+                Journal Entry: <a href="journal-entries/@bill.JournalEntryId">@bill.JournalEntryId</a>
+            </div>
+        }
+
+        <div class="row mt-4 small text-muted">
+            <div class="col-md-6">Created: @bill.CreatedUtc.ToString("g")</div>
+            @if (bill.UpdatedUtc.HasValue)
+            {
+                <div class="col-md-6">Updated: @bill.UpdatedUtc.Value.ToString("g")</div>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger mt-3">@error</div>
+        }
+
+        <div class="mt-3">
+            <a href="bills" class="btn btn-outline-secondary btn-sm">
+                <i class="fa-duotone fa-arrow-left me-1"></i> Back to list
+            </a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] BillService BillSvc { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    private Bill? bill;
+    private bool loading = true;
+    private bool acting;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId) || string.IsNullOrEmpty(Id)) return;
+        loading = true;
+        try { bill = await BillSvc.GetBillAsync(Id, CompanyId!); } catch { }
+        loading = false;
+    }
+
+    private async Task Receive()
+    {
+        error = null; acting = true;
+        try { bill = await BillSvc.ReceiveBillAsync(Id, CompanyId!); }
+        catch (Exception ex) { error = ex.Message; }
+        acting = false;
+    }
+
+    private async Task VoidBill()
+    {
+        error = null; acting = true;
+        try { bill = await BillSvc.VoidBillAsync(Id, CompanyId!); }
+        catch (Exception ex) { error = ex.Message; }
+        acting = false;
+    }
+
+    private static string FormatTerms(PaymentTerms t) => t switch
+    {
+        PaymentTerms.DueOnReceipt => "Due on Receipt",
+        _ => t.ToString().Replace("Net", "Net ")
+    };
+}

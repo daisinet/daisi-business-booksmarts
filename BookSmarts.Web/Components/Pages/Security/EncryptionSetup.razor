@@ -1,0 +1,223 @@
+@page "/settings/encryption-setup"
+@using BookSmarts.Services
+
+<div class="bs-card" style="max-width: 600px; margin: 0 auto;">
+    @if (step == 1)
+    {
+        <h4>Enable Zero-Knowledge Encryption</h4>
+        <p class="text-muted small mb-4">
+            Encrypt all sensitive financial data with a 6-digit PIN. Only you can access your data —
+            not even administrators with database access can read it.
+        </p>
+
+        <div class="mb-3">
+            <label class="form-label">Choose a 6-Digit PIN</label>
+            <input type="password" class="form-control" maxlength="6" inputmode="numeric"
+                   @bind="pin" placeholder="Enter 6-digit PIN" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Confirm PIN</label>
+            <input type="password" class="form-control" maxlength="6" inputmode="numeric"
+                   @bind="confirmPin" placeholder="Confirm PIN" />
+        </div>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger small">@error</div>
+        }
+
+        <button class="btn btn-primary" @onclick="EnableEncryption" disabled="@processing">
+            @if (processing)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            Enable Encryption
+        </button>
+    }
+    else if (step == 2)
+    {
+        <h4>Your Recovery Phrase</h4>
+        <div class="alert alert-warning small">
+            <i class="fa-duotone fa-triangle-exclamation me-1"></i>
+            <strong>Write this down and store it safely.</strong> If you forget your PIN, this is the only way to recover your data.
+            This phrase will never be shown again.
+        </div>
+
+        <div class="bs-recovery-phrase mb-3">
+            @{
+                var words = recoveryPhrase.Split(' ');
+                <div class="row g-2">
+                    @for (int i = 0; i < words.Length; i++)
+                    {
+                        <div class="col-4">
+                            <div class="bs-recovery-word">
+                                <span class="bs-recovery-num">@(i + 1).</span> @words[i]
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" @bind="writtenDown" id="writtenDownCheck">
+            <label class="form-check-label" for="writtenDownCheck">
+                I have written down my recovery phrase and stored it safely.
+            </label>
+        </div>
+
+        <button class="btn btn-primary" @onclick="() => step = 3" disabled="@(!writtenDown)">
+            Continue to Verification
+        </button>
+    }
+    else if (step == 3)
+    {
+        <h4>Verify Your Recovery Phrase</h4>
+        <p class="text-muted small mb-3">Enter the requested words from your recovery phrase to confirm you saved it.</p>
+
+        @for (int i = 0; i < verifyIndices.Length; i++)
+        {
+            var idx = i;
+            <div class="mb-3">
+                <label class="form-label">Word #@(verifyIndices[idx] + 1)</label>
+                <input type="text" class="form-control" @bind="verifyWords[idx]"
+                       placeholder="Enter word" />
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger small">@error</div>
+        }
+
+        <button class="btn btn-primary" @onclick="VerifyAndMigrate" disabled="@processing">
+            @if (processing)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            Confirm & Encrypt Data
+        </button>
+    }
+    else if (step == 4)
+    {
+        <h4>Encrypting Your Data</h4>
+        <p class="text-muted small mb-3">Please wait while all existing data is being encrypted. Do not close this page.</p>
+
+        <MudProgressLinear Value="@migrationPercent" Color="MudBlazor.Color.Primary" Rounded="true" Size="MudBlazor.Size.Large" class="mb-2" />
+        <p class="text-muted small text-center">
+            @migrationPhase — @migrationProcessed / @migrationTotal documents
+        </p>
+    }
+    else if (step == 5)
+    {
+        <div class="text-center">
+            <i class="fa-duotone fa-shield-check" style="font-size: 3rem; color: #198754;"></i>
+            <h4 class="mt-3">Encryption Enabled</h4>
+            <p class="text-muted">All your financial data is now encrypted. You'll need to enter your PIN each time you log in.</p>
+            <a class="btn btn-primary" href="settings/organization">Return to Settings</a>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter(Name = "AccountId")] string AccountId { get; set; } = "";
+    [Inject] EncryptionSetupService SetupService { get; set; } = default!;
+    [Inject] EncryptionMigrationService MigrationService { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    private int step = 1;
+    private string pin = "";
+    private string confirmPin = "";
+    private string recoveryPhrase = "";
+    private bool writtenDown;
+    private string? error;
+    private bool processing;
+
+    // Verification
+    private int[] verifyIndices = [];
+    private string[] verifyWords = [];
+
+    // Migration progress
+    private double migrationPercent;
+    private string migrationPhase = "";
+    private int migrationProcessed;
+    private int migrationTotal;
+
+    private async Task EnableEncryption()
+    {
+        error = null;
+        if (pin.Length != 6 || !pin.All(char.IsDigit))
+        {
+            error = "PIN must be exactly 6 digits.";
+            return;
+        }
+        if (pin != confirmPin)
+        {
+            error = "PINs do not match.";
+            return;
+        }
+
+        processing = true;
+        StateHasChanged();
+
+        try
+        {
+            recoveryPhrase = await SetupService.EnableEncryptionAsync(AccountId, pin);
+
+            // Pick 3 random word indices to verify
+            var rng = new Random();
+            verifyIndices = Enumerable.Range(0, 12).OrderBy(_ => rng.Next()).Take(3).OrderBy(i => i).ToArray();
+            verifyWords = new string[3];
+
+            step = 2;
+        }
+        catch (Exception ex)
+        {
+            error = $"Error: {ex.Message}";
+        }
+
+        processing = false;
+    }
+
+    private async Task VerifyAndMigrate()
+    {
+        error = null;
+        var words = recoveryPhrase.Split(' ');
+
+        for (int i = 0; i < verifyIndices.Length; i++)
+        {
+            if (string.IsNullOrEmpty(verifyWords[i]) ||
+                !verifyWords[i].Trim().Equals(words[verifyIndices[i]], StringComparison.OrdinalIgnoreCase))
+            {
+                error = $"Word #{verifyIndices[i] + 1} is incorrect. Please check your recovery phrase.";
+                return;
+            }
+        }
+
+        step = 4;
+        processing = true;
+        StateHasChanged();
+
+        try
+        {
+            var progress = new Progress<MigrationProgress>(p =>
+            {
+                migrationProcessed = p.Processed;
+                migrationTotal = p.Total;
+                migrationPercent = p.Percentage;
+                migrationPhase = p.CurrentPhase;
+                InvokeAsync(StateHasChanged);
+            });
+
+            await MigrationService.EncryptAllDataAsync(AccountId, progress);
+            step = 5;
+        }
+        catch (Exception ex)
+        {
+            error = $"Migration error: {ex.Message}";
+            step = 3;
+        }
+
+        processing = false;
+    }
+}

@@ -1,0 +1,286 @@
+@page "/banking/rules"
+
+<h1 class="bs-page-title">Auto-Categorization Rules</h1>
+<p class="bs-page-subtitle">Manage rules that automatically suggest accounts for imported transactions</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-sparkles"></i>
+        <h4>No Company Selected</h4>
+        <p>Select a company to manage categorization rules.</p>
+    </div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+    @if (!string.IsNullOrEmpty(successMsg))
+    {
+        <div class="alert alert-success">@successMsg</div>
+    }
+
+    <div class="bs-toolbar">
+        <div></div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-primary btn-sm" @onclick="ShowCreateForm">
+                <i class="fa-duotone fa-plus me-1"></i> New Rule
+            </button>
+        </div>
+    </div>
+
+    @if (showForm)
+    {
+        <div class="bs-card mb-3">
+            <h5>@(editingRule?.id != null ? "Edit Rule" : "New Rule")</h5>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label small">Merchant Name Contains</label>
+                    <input type="text" class="form-control form-control-sm" @bind="editingRule!.MerchantNameContains" placeholder="e.g. Starbucks" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Plaid Category</label>
+                    <input type="text" class="form-control form-control-sm" @bind="editingRule!.PlaidCategory" placeholder="e.g. Food and Drink" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Target Account</label>
+                    <select class="form-select form-select-sm" @bind="editingRuleAccountId">
+                        <option value="">— Select Account —</option>
+                        @foreach (var category in Enum.GetValues<AccountCategory>())
+                        {
+                            var categoryAccounts = coaAccounts.Where(a => a.IsActive && a.Category == category).OrderBy(a => a.AccountNumber).ToList();
+                            if (categoryAccounts.Count > 0)
+                            {
+                                <optgroup label="@category">
+                                    @foreach (var acct in categoryAccounts)
+                                    {
+                                        <option value="@acct.id">@acct.AccountNumber — @acct.Name</option>
+                                    }
+                                </optgroup>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Priority</label>
+                    <input type="number" class="form-control form-control-sm" @bind="editingRule!.Priority" min="1" />
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" @bind="editingRule!.IsActive" id="ruleActive" />
+                        <label class="form-check-label small" for="ruleActive">Active</label>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3 d-flex gap-2">
+                <button class="btn btn-primary btn-sm" @onclick="SaveRule" disabled="@saving">
+                    @if (saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Save
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="CancelForm">Cancel</button>
+            </div>
+        </div>
+    }
+
+    @if (rules.Count == 0 && !showForm)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-sparkles"></i>
+            <h4>No Rules Yet</h4>
+            <p>Create rules to automatically suggest account categories for imported bank transactions.</p>
+        </div>
+    }
+    else if (rules.Count > 0)
+    {
+        <table class="bs-table bs-table-striped">
+            <thead>
+                <tr>
+                    <th>Priority</th>
+                    <th>Match Criteria</th>
+                    <th>Target Account</th>
+                    <th>Times Applied</th>
+                    <th>Active</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var rule in rules)
+                {
+                    <tr>
+                        <td>@rule.Priority</td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(rule.MerchantNameContains))
+                            {
+                                <span class="small">Merchant: <strong>@rule.MerchantNameContains</strong></span>
+                            }
+                            @if (!string.IsNullOrEmpty(rule.PlaidCategory))
+                            {
+                                @if (!string.IsNullOrEmpty(rule.MerchantNameContains)) { <br /> }
+                                <span class="small">Category: <strong>@rule.PlaidCategory</strong></span>
+                            }
+                        </td>
+                        <td>@rule.TargetAccountNumber — @rule.TargetAccountName</td>
+                        <td>@rule.TimesApplied</td>
+                        <td>
+                            @if (rule.IsActive)
+                            {
+                                <span class="bs-badge bs-badge-active">Active</span>
+                            }
+                            else
+                            {
+                                <span class="bs-badge bs-badge-disconnected">Inactive</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-outline-secondary btn-sm" @onclick="() => EditRule(rule)">
+                                    <i class="fa-duotone fa-pen"></i>
+                                </button>
+                                <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteRule(rule)">
+                                    <i class="fa-duotone fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+
+    [Inject] BankingService Banking { get; set; } = default!;
+    [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
+
+    private List<CategorizationRule> rules = new();
+    private List<ChartOfAccountEntry> coaAccounts = new();
+    private CategorizationRule? editingRule;
+    private string editingRuleAccountId = "";
+    private bool showForm;
+    private bool saving;
+    private string? error;
+    private string? successMsg;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        coaAccounts = await CoaService.GetChartOfAccountsAsync(CompanyId);
+        await LoadRules();
+    }
+
+    private async Task LoadRules()
+    {
+        try
+        {
+            rules = await Banking.GetRulesAsync(CompanyId!);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void ShowCreateForm()
+    {
+        editingRule = new CategorizationRule
+        {
+            CompanyId = CompanyId!,
+            Priority = 100,
+            IsActive = true
+        };
+        editingRuleAccountId = "";
+        showForm = true;
+        error = null;
+        successMsg = null;
+    }
+
+    private void EditRule(CategorizationRule rule)
+    {
+        editingRule = new CategorizationRule
+        {
+            id = rule.id,
+            CompanyId = rule.CompanyId,
+            MerchantNameContains = rule.MerchantNameContains,
+            PlaidCategory = rule.PlaidCategory,
+            TargetAccountId = rule.TargetAccountId,
+            TargetAccountNumber = rule.TargetAccountNumber,
+            TargetAccountName = rule.TargetAccountName,
+            Priority = rule.Priority,
+            IsActive = rule.IsActive,
+            TimesApplied = rule.TimesApplied
+        };
+        editingRuleAccountId = rule.TargetAccountId;
+        showForm = true;
+        error = null;
+        successMsg = null;
+    }
+
+    private void CancelForm()
+    {
+        showForm = false;
+        editingRule = null;
+    }
+
+    private async Task SaveRule()
+    {
+        if (editingRule == null || string.IsNullOrEmpty(editingRuleAccountId)) return;
+
+        var acct = coaAccounts.FirstOrDefault(a => a.id == editingRuleAccountId);
+        if (acct == null) return;
+
+        if (string.IsNullOrEmpty(editingRule.MerchantNameContains) && string.IsNullOrEmpty(editingRule.PlaidCategory))
+        {
+            error = "At least one match criteria (merchant name or Plaid category) is required.";
+            return;
+        }
+
+        saving = true;
+        error = null;
+        try
+        {
+            editingRule.TargetAccountId = acct.id;
+            editingRule.TargetAccountNumber = acct.AccountNumber;
+            editingRule.TargetAccountName = acct.Name;
+
+            if (string.IsNullOrEmpty(editingRule.id))
+                await Banking.CreateRuleAsync(editingRule);
+            else
+                await Banking.UpdateRuleAsync(editingRule);
+
+            showForm = false;
+            editingRule = null;
+            successMsg = "Rule saved.";
+            await LoadRules();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task DeleteRule(CategorizationRule rule)
+    {
+        error = null;
+        try
+        {
+            await Banking.DeleteRuleAsync(rule.id, CompanyId!);
+            successMsg = "Rule deleted.";
+            await LoadRules();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+}

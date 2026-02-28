@@ -1,0 +1,193 @@
+@page "/vendors"
+
+<h1 class="bs-page-title">Vendors</h1>
+<p class="bs-page-subtitle">Manage your vendor contacts</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-truck"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else if (showForm)
+{
+    <div class="bs-card mb-3" style="max-width: 600px;">
+        <h5>@(editing.id == "" ? "New Vendor" : "Edit Vendor")</h5>
+        <div class="mb-3">
+            <label class="form-label">Vendor Name *</label>
+            <input type="text" class="form-control" @bind="editing.Name" placeholder="Company or individual name" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Contact Person</label>
+            <input type="text" class="form-control" @bind="editing.ContactPerson" />
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" @bind="editing.Email" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Phone</label>
+                <input type="text" class="form-control" @bind="editing.Phone" />
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Address</label>
+            <textarea class="form-control" rows="2" @bind="editing.Address"></textarea>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Default Payment Terms</label>
+            <select class="form-select" @bind="editing.DefaultPaymentTerms">
+                @foreach (var t in Enum.GetValues<PaymentTerms>())
+                {
+                    <option value="@t">@FormatTerms(t)</option>
+                }
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea class="form-control" rows="2" @bind="editing.Notes"></textarea>
+        </div>
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" @bind="editing.IsActive" id="activeCheck">
+            <label class="form-check-label" for="activeCheck">Active</label>
+        </div>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger">@error</div>
+        }
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" @onclick="Save" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save
+            </button>
+            <button class="btn btn-outline-secondary" @onclick="() => showForm = false">Cancel</button>
+        </div>
+    </div>
+}
+else if (vendors.Count == 0)
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-truck"></i>
+        <h4>No vendors yet</h4>
+        <p>Add a vendor to start recording bills.</p>
+        <button class="btn btn-primary btn-sm" @onclick="ShowCreate">
+            <i class="fa-duotone fa-plus me-1"></i> Add Vendor
+        </button>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" @bind="showInactive" @bind:after="LoadData" id="inactiveToggle">
+                <label class="form-check-label small" for="inactiveToggle">Show inactive</label>
+            </div>
+        </div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-primary btn-sm" @onclick="ShowCreate">
+                <i class="fa-duotone fa-plus me-1"></i> Add Vendor
+            </button>
+        </div>
+    </div>
+
+    <table class="bs-table bs-table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Contact</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Terms</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var v in vendors)
+            {
+                <tr>
+                    <td><strong>@v.Name</strong></td>
+                    <td>@(v.ContactPerson ?? "—")</td>
+                    <td>@(v.Email ?? "—")</td>
+                    <td>@(v.Phone ?? "—")</td>
+                    <td>@FormatTerms(v.DefaultPaymentTerms)</td>
+                    <td>
+                        <span class="bs-badge @(v.IsActive ? "bs-badge-posted" : "bs-badge-voided")">
+                            @(v.IsActive ? "Active" : "Inactive")
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(v)">
+                            <i class="fa-duotone fa-pen"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] ContactService Contacts { get; set; } = default!;
+
+    private List<Vendor> vendors = new();
+    private Vendor editing = new();
+    private bool showForm;
+    private bool showInactive;
+    private bool saving;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try { vendors = await Contacts.GetVendorsAsync(CompanyId!, activeOnly: !showInactive); } catch { }
+    }
+
+    private void ShowCreate()
+    {
+        editing = new Vendor { CompanyId = CompanyId!, IsActive = true };
+        showForm = true;
+        error = null;
+    }
+
+    private void Edit(Vendor v)
+    {
+        editing = v;
+        showForm = true;
+        error = null;
+    }
+
+    private async Task Save()
+    {
+        error = null;
+        saving = true;
+        try
+        {
+            if (string.IsNullOrEmpty(editing.id))
+                await Contacts.CreateVendorAsync(editing);
+            else
+                await Contacts.UpdateVendorAsync(editing);
+            showForm = false;
+            await LoadData();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        saving = false;
+    }
+
+    private static string FormatTerms(PaymentTerms t) => t switch
+    {
+        PaymentTerms.DueOnReceipt => "Due on Receipt",
+        _ => t.ToString().Replace("Net", "Net ")
+    };
+}

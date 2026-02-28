@@ -1,0 +1,242 @@
+@page "/chart-of-accounts"
+
+<h1 class="bs-page-title">Chart of Accounts</h1>
+<p class="bs-page-subtitle">Manage your general ledger accounts</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-list-tree"></i>
+        <h4>No company selected</h4>
+        <p>Select a company from the header.</p>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" @bind="showInactive" id="showInactiveCheck">
+                <label class="form-check-label small" for="showInactiveCheck">Show inactive</label>
+            </div>
+        </div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-primary btn-sm" @onclick="ShowCreateForm">
+                <i class="fa-duotone fa-plus me-1"></i> Add Account
+            </button>
+        </div>
+    </div>
+
+    @if (showForm)
+    {
+        <div class="bs-card mb-3" style="max-width: 600px;">
+            <h5>@(editingEntry.id == "" ? "New Account" : "Edit Account")</h5>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Account Number</label>
+                    <input type="text" class="form-control" @bind="editingEntry.AccountNumber" placeholder="e.g. 1000" />
+                </div>
+                <div class="col-md-8 mb-3">
+                    <label class="form-label">Account Name</label>
+                    <input type="text" class="form-control" @bind="editingEntry.Name" />
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Category</label>
+                    <select class="form-select" @bind="editingEntry.Category">
+                        @foreach (var cat in Enum.GetValues<AccountCategory>())
+                        {
+                            <option value="@cat">@cat</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Sub Type</label>
+                    <select class="form-select" @bind="editingEntry.SubType">
+                        @foreach (var sub in Enum.GetValues<AccountSubType>())
+                        {
+                            <option value="@sub">@sub</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Description</label>
+                <input type="text" class="form-control" @bind="editingEntry.Description" />
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" @bind="editingEntry.IsActive" id="activeCheck">
+                <label class="form-check-label" for="activeCheck">Active</label>
+            </div>
+
+            @if (!string.IsNullOrEmpty(error))
+            {
+                <div class="alert alert-danger">@error</div>
+            }
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" @onclick="SaveEntry" disabled="@saving">
+                    @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Save
+                </button>
+                <button class="btn btn-outline-secondary" @onclick="() => showForm = false">Cancel</button>
+            </div>
+        </div>
+    }
+
+    <table class="bs-table">
+        <thead>
+            <tr>
+                <th style="width: 100px;">Number</th>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Sub Type</th>
+                <th>Normal</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var account in DisplayAccounts)
+            {
+                @if (ShouldShowCategoryHeader(account))
+                {
+                    <tr>
+                        <td colspan="7" class="fw-bold small text-uppercase pt-3 bs-cat-@account.Category.ToString().ToLower()" style="border-bottom: 2px solid currentColor;">
+                            @account.Category
+                        </td>
+                    </tr>
+                }
+                <tr class="@(!account.IsActive ? "text-muted" : "")">
+                    <td><code>@account.AccountNumber</code></td>
+                    <td>
+                        @account.Name
+                        @if (account.IsSystemAccount)
+                        {
+                            <i class="fa-duotone fa-lock ms-1 small text-muted" title="System account"></i>
+                        }
+                    </td>
+                    <td><span class="bs-cat-@account.Category.ToString().ToLower()">@account.Category</span></td>
+                    <td class="small">@account.SubType</td>
+                    <td class="small">@account.NormalBalance</td>
+                    <td>
+                        @if (account.IsActive)
+                        {
+                            <span class="bs-badge bs-badge-posted">Active</span>
+                        }
+                        else
+                        {
+                            <span class="bs-badge bs-badge-reversed">Inactive</span>
+                        }
+                    </td>
+                    <td>
+                        @if (!account.IsSystemAccount)
+                        {
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditEntry(account)">
+                                <i class="fa-duotone fa-pen"></i>
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    @if (DisplayAccounts.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-list-tree"></i>
+            <h4>No accounts</h4>
+            <p>Add accounts or create a company with the default chart of accounts template.</p>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
+
+    private List<ChartOfAccountEntry> accounts = new();
+    private ChartOfAccountEntry editingEntry = new();
+    private bool showForm;
+    private bool showInactive;
+    private bool saving;
+    private string? error;
+    private AccountCategory? lastRenderedCategory;
+
+    private List<ChartOfAccountEntry> DisplayAccounts => showInactive ? accounts : accounts.Where(a => a.IsActive).ToList();
+
+    private bool ShouldShowCategoryHeader(ChartOfAccountEntry account)
+    {
+        if (account.Category != lastRenderedCategory)
+        {
+            lastRenderedCategory = account.Category;
+            return true;
+        }
+        return false;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            accounts = await CoaService.GetChartOfAccountsAsync(CompanyId!, activeOnly: false);
+        }
+        catch { }
+    }
+
+    private void ShowCreateForm()
+    {
+        editingEntry = new ChartOfAccountEntry
+        {
+            CompanyId = CompanyId!,
+            IsActive = true,
+            Category = AccountCategory.Asset,
+            SubType = AccountSubType.Cash
+        };
+        showForm = true;
+        error = null;
+    }
+
+    private void EditEntry(ChartOfAccountEntry entry)
+    {
+        editingEntry = entry;
+        showForm = true;
+        error = null;
+    }
+
+    private async Task SaveEntry()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(editingEntry.AccountNumber) || string.IsNullOrWhiteSpace(editingEntry.Name))
+        {
+            error = "Account number and name are required.";
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            if (string.IsNullOrEmpty(editingEntry.id))
+            {
+                editingEntry.CompanyId = CompanyId!;
+                await CoaService.CreateAccountEntryAsync(editingEntry);
+            }
+            else
+            {
+                await CoaService.UpdateAccountEntryAsync(editingEntry);
+            }
+            showForm = false;
+            await LoadData();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        saving = false;
+    }
+}

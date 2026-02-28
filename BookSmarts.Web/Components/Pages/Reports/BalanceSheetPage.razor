@@ -1,0 +1,187 @@
+@page "/reports/balance-sheet"
+
+<h1 class="bs-page-title">Balance Sheet</h1>
+<p class="bs-page-subtitle">@(CashBasis ? "Cash Basis" : "Accrual Basis") &mdash; As of @asOfDate.ToString("MMMM d, yyyy")</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-building-columns"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center">
+            <label class="form-label mb-0 small">As of:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="asOfDate" @bind:after="LoadData" />
+        </div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="Print">
+                <i class="fa-duotone fa-print me-1"></i> Print
+            </button>
+        </div>
+    </div>
+
+    @if (report == null)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-building-columns"></i>
+            <h4>No data</h4>
+            <p>Post journal entries to generate a balance sheet.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table">
+            <thead>
+                <tr>
+                    <th style="width: 100px;">Account</th>
+                    <th>Name</th>
+                    <th class="bs-amount" style="width: 150px;">Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                @* ── Assets ── *@
+                <tr>
+                    <td colspan="3" class="fw-bold small text-uppercase pt-3 bs-cat-asset" style="border-bottom: 2px solid currentColor;">
+                        Assets
+                    </td>
+                </tr>
+                @foreach (var sect in report.AssetSections)
+                {
+                    <tr>
+                        <td colspan="3" class="fw-semibold small ps-3 pt-2">@sect.Title</td>
+                    </tr>
+                    @foreach (var line in sect.Lines)
+                    {
+                        <tr>
+                            <td class="ps-4"><code>@line.AccountNumber</code></td>
+                            <td>@line.AccountName</td>
+                            <td class="bs-amount">@line.Balance.ToString("N2")</td>
+                        </tr>
+                    }
+                    <tr class="fw-semibold" style="border-top: 1px solid var(--bs-border-color, #ccc);">
+                        <td colspan="2" class="text-end small ps-3">Total @sect.Title:</td>
+                        <td class="bs-amount">@sect.Total.ToString("N2")</td>
+                    </tr>
+                }
+                <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                    <td colspan="2" class="text-end">Total Assets:</td>
+                    <td class="bs-amount">@report.TotalAssets.ToString("N2")</td>
+                </tr>
+
+                @* ── Liabilities ── *@
+                <tr>
+                    <td colspan="3" class="fw-bold small text-uppercase pt-4 bs-cat-liability" style="border-bottom: 2px solid currentColor;">
+                        Liabilities
+                    </td>
+                </tr>
+                @foreach (var sect in report.LiabilitySections)
+                {
+                    <tr>
+                        <td colspan="3" class="fw-semibold small ps-3 pt-2">@sect.Title</td>
+                    </tr>
+                    @foreach (var line in sect.Lines)
+                    {
+                        <tr>
+                            <td class="ps-4"><code>@line.AccountNumber</code></td>
+                            <td>@line.AccountName</td>
+                            <td class="bs-amount">@line.Balance.ToString("N2")</td>
+                        </tr>
+                    }
+                    <tr class="fw-semibold" style="border-top: 1px solid var(--bs-border-color, #ccc);">
+                        <td colspan="2" class="text-end small ps-3">Total @sect.Title:</td>
+                        <td class="bs-amount">@sect.Total.ToString("N2")</td>
+                    </tr>
+                }
+                <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                    <td colspan="2" class="text-end">Total Liabilities:</td>
+                    <td class="bs-amount">@report.TotalLiabilities.ToString("N2")</td>
+                </tr>
+
+                @* ── Equity ── *@
+                <tr>
+                    <td colspan="3" class="fw-bold small text-uppercase pt-4 bs-cat-equity" style="border-bottom: 2px solid currentColor;">
+                        Equity
+                    </td>
+                </tr>
+                @foreach (var sect in report.EquitySections)
+                {
+                    <tr>
+                        <td colspan="3" class="fw-semibold small ps-3 pt-2">@sect.Title</td>
+                    </tr>
+                    @foreach (var line in sect.Lines)
+                    {
+                        <tr>
+                            <td class="ps-4"><code>@line.AccountNumber</code></td>
+                            <td>@line.AccountName</td>
+                            <td class="bs-amount">@line.Balance.ToString("N2")</td>
+                        </tr>
+                    }
+                    <tr class="fw-semibold" style="border-top: 1px solid var(--bs-border-color, #ccc);">
+                        <td colspan="2" class="text-end small ps-3">Total @sect.Title:</td>
+                        <td class="bs-amount">@sect.Total.ToString("N2")</td>
+                    </tr>
+                }
+                <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                    <td colspan="2" class="text-end">Total Equity:</td>
+                    <td class="bs-amount">@report.TotalEquity.ToString("N2")</td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold" style="border-top: 3px double var(--bs-border-color, #000);">
+                    <td colspan="2" class="text-end">Total Liabilities &amp; Equity:</td>
+                    <td class="bs-amount">@report.TotalLiabilitiesAndEquity.ToString("N2")</td>
+                </tr>
+                @if (report.IsBalanced)
+                {
+                    <tr>
+                        <td colspan="3" class="text-center small text-success">
+                            <i class="fa-duotone fa-circle-check me-1"></i> Balance sheet is in balance
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="3" class="text-center small text-danger">
+                            <i class="fa-duotone fa-triangle-exclamation me-1"></i>
+                            Out of balance by @Math.Abs(report.TotalAssets - report.TotalLiabilitiesAndEquity).ToString("N2")
+                        </td>
+                    </tr>
+                }
+            </tfoot>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [CascadingParameter(Name = "CashBasis")] bool CashBasis { get; set; }
+    [Inject] FinancialStatementService Financials { get; set; } = default!;
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    private BalanceSheetReport? report;
+    private DateTime asOfDate = DateTime.Today;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            report = await Financials.GetBalanceSheetAsync(CompanyId!, asOfDate, CashBasis);
+            if (report.AssetSections.Count == 0 && report.LiabilitySections.Count == 0 && report.EquitySections.Count == 0)
+                report = null;
+        }
+        catch { report = null; }
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+}

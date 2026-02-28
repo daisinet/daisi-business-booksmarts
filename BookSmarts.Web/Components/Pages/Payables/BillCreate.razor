@@ -1,0 +1,257 @@
+@page "/bills/new"
+@page "/bills/{Id}/edit"
+
+<h1 class="bs-page-title">@(string.IsNullOrEmpty(Id) ? "New Bill" : "Edit Bill")</h1>
+<p class="bs-page-subtitle">Record a bill from a vendor</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-file-invoice-dollar"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-card" style="max-width: 900px;">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Vendor *</label>
+                <select class="form-select" @bind="bill.VendorId" @bind:after="OnVendorSelected">
+                    <option value="">— Select Vendor —</option>
+                    @foreach (var v in vendors)
+                    {
+                        <option value="@v.id">@v.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Bill Date</label>
+                <input type="date" class="form-control" @bind="bill.BillDate" @bind:after="ComputeDueDate" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Payment Terms</label>
+                <select class="form-select" @bind="bill.PaymentTerms" @bind:after="ComputeDueDate">
+                    @foreach (var t in Enum.GetValues<PaymentTerms>())
+                    {
+                        <option value="@t">@FormatTerms(t)</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Due Date</label>
+                <input type="date" class="form-control" @bind="bill.DueDate" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Vendor Ref #</label>
+                <input type="text" class="form-control" @bind="bill.VendorReferenceNumber" placeholder="Vendor's invoice number" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Notes</label>
+                <input type="text" class="form-control" @bind="bill.Notes" />
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Memo</label>
+            <textarea class="form-control" rows="2" @bind="bill.Memo" placeholder="Internal memo"></textarea>
+        </div>
+
+        <h6 class="mt-4 mb-2">Line Items</h6>
+        <table class="bs-table">
+            <thead>
+                <tr>
+                    <th style="width: 30%;">Description</th>
+                    <th style="width: 25%;">Expense Account</th>
+                    <th class="bs-amount" style="width: 100px;">Qty</th>
+                    <th class="bs-amount" style="width: 120px;">Unit Price</th>
+                    <th class="bs-amount" style="width: 120px;">Amount</th>
+                    <th style="width: 40px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (int i = 0; i < lines.Count; i++)
+                {
+                    var idx = i;
+                    <tr>
+                        <td><input type="text" class="form-control form-control-sm" @bind="lines[idx].Description" /></td>
+                        <td>
+                            <select class="form-select form-select-sm" @bind="lines[idx].AccountId" @bind:after="() => OnAccountSelected(idx)">
+                                <option value="">— Account —</option>
+                                @foreach (var acct in expenseAccounts)
+                                {
+                                    <option value="@acct.id">@acct.AccountNumber — @acct.Name</option>
+                                }
+                            </select>
+                        </td>
+                        <td><input type="number" class="form-control form-control-sm text-end" @bind="lines[idx].Quantity" step="1" min="1" /></td>
+                        <td><input type="number" class="form-control form-control-sm text-end" @bind="lines[idx].UnitPrice" step="0.01" min="0" /></td>
+                        <td class="bs-amount">@lines[idx].Amount.ToString("N2")</td>
+                        <td>
+                            @if (lines.Count > 1)
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveLine(idx)">
+                                    <i class="fa-duotone fa-times"></i>
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="4" class="text-end fw-bold">Total:</td>
+                    <td class="bs-amount fw-bold">@Total.ToString("N2")</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <button class="btn btn-sm btn-outline-secondary mt-2" @onclick="AddLine">
+            <i class="fa-duotone fa-plus me-1"></i> Add Line
+        </button>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger mt-3">@error</div>
+        }
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-primary" @onclick="SaveDraft" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save as Draft
+            </button>
+            <button class="btn btn-success" @onclick="SaveAndReceive" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save & Receive
+            </button>
+            <a href="bills" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] BillService BillSvc { get; set; } = default!;
+    [Inject] ContactService Contacts { get; set; } = default!;
+    [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    private Bill bill = new() { BillDate = DateTime.Today };
+    private List<BillLine> lines = new() { new() { Quantity = 1 } };
+    private List<Vendor> vendors = new();
+    private List<ChartOfAccountEntry> expenseAccounts = new();
+    private bool saving;
+    private string? error;
+
+    private decimal Total => lines.Sum(l => l.Amount);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        try
+        {
+            vendors = await Contacts.GetVendorsAsync(CompanyId!, activeOnly: true);
+            var allAccounts = await CoaService.GetChartOfAccountsAsync(CompanyId!);
+            expenseAccounts = allAccounts.Where(a => a.Category == AccountCategory.Expense).ToList();
+
+            if (!string.IsNullOrEmpty(Id))
+            {
+                var existing = await BillSvc.GetBillAsync(Id, CompanyId!);
+                if (existing != null && existing.Status == BillStatus.Draft)
+                {
+                    bill = existing;
+                    lines = existing.Lines;
+                }
+            }
+            else
+            {
+                ComputeDueDate();
+            }
+        }
+        catch { }
+    }
+
+    private void AddLine() => lines.Add(new BillLine { Quantity = 1 });
+    private void RemoveLine(int idx) { if (lines.Count > 1) lines.RemoveAt(idx); }
+
+    private void OnVendorSelected()
+    {
+        var v = vendors.FirstOrDefault(x => x.id == bill.VendorId);
+        if (v != null)
+        {
+            bill.VendorName = v.Name;
+            bill.PaymentTerms = v.DefaultPaymentTerms;
+            ComputeDueDate();
+        }
+    }
+
+    private void OnAccountSelected(int idx)
+    {
+        var acct = expenseAccounts.FirstOrDefault(a => a.id == lines[idx].AccountId);
+        if (acct != null)
+        {
+            lines[idx].AccountNumber = acct.AccountNumber;
+            lines[idx].AccountName = acct.Name;
+        }
+    }
+
+    private void ComputeDueDate()
+    {
+        bill.DueDate = BillService.ComputeDueDate(bill.BillDate, bill.PaymentTerms);
+    }
+
+    private async Task SaveDraft()
+    {
+        var created = await SaveBill();
+        if (created != null) Nav.NavigateTo($"bills/{created.id}");
+    }
+
+    private async Task SaveAndReceive()
+    {
+        var created = await SaveBill();
+        if (created != null)
+        {
+            try
+            {
+                await BillSvc.ReceiveBillAsync(created.id, CompanyId!);
+                Nav.NavigateTo($"bills/{created.id}");
+            }
+            catch (Exception ex) { error = ex.Message; }
+        }
+    }
+
+    private async Task<Bill?> SaveBill()
+    {
+        error = null;
+        saving = true;
+        try
+        {
+            bill.CompanyId = CompanyId!;
+            bill.Lines = lines.Where(l => !string.IsNullOrEmpty(l.Description)).ToList();
+
+            Bill result;
+            if (string.IsNullOrEmpty(bill.id))
+                result = await BillSvc.CreateBillAsync(bill);
+            else
+                result = await BillSvc.UpdateDraftBillAsync(bill);
+
+            saving = false;
+            return result;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            saving = false;
+            return null;
+        }
+    }
+
+    private static string FormatTerms(PaymentTerms t) => t switch
+    {
+        PaymentTerms.DueOnReceipt => "Due on Receipt",
+        _ => t.ToString().Replace("Net", "Net ")
+    };
+}

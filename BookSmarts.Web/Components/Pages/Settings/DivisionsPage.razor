@@ -1,0 +1,172 @@
+@page "/settings/divisions"
+
+<h1 class="bs-page-title">Divisions</h1>
+<p class="bs-page-subtitle">Manage divisions within your organization</p>
+
+@if (!divisionsEnabled)
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-sitemap"></i>
+        <h4>Divisions are not enabled</h4>
+        <p>Enable divisions in <a href="settings/organization">Organization Setup</a> to group companies into divisions.</p>
+    </div>
+}
+else if (showForm)
+{
+    <div class="bs-card mb-3" style="max-width: 500px;">
+        <h5>@(string.IsNullOrEmpty(editingDivision.id) ? "New Division" : "Edit Division")</h5>
+        <div class="mb-3">
+            <label class="form-label">Division Name</label>
+            <input type="text" class="form-control" @bind="editingDivision.Name" placeholder="e.g. West Coast Operations" />
+        </div>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger">@error</div>
+        }
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" @onclick="SaveDivision" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save
+            </button>
+            <button class="btn btn-outline-secondary" @onclick="() => showForm = false">Cancel</button>
+        </div>
+    </div>
+}
+else if (divisions.Count == 0)
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-sitemap"></i>
+        <h4>No divisions yet</h4>
+        <p>Add a division to organize your companies.</p>
+        <button class="btn btn-primary btn-sm" @onclick="ShowCreateForm">
+            <i class="fa-duotone fa-plus me-1"></i> Add Division
+        </button>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div></div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-primary btn-sm" @onclick="ShowCreateForm">
+                <i class="fa-duotone fa-plus me-1"></i> Add Division
+            </button>
+        </div>
+    </div>
+
+    <table class="bs-table bs-table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Companies</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var division in divisions)
+            {
+                <tr>
+                    <td><strong>@division.Name</strong></td>
+                    <td>@GetCompanyCount(division.id)</td>
+                    <td>@division.CreatedUtc.ToString("MM/dd/yyyy")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditDivision(division)">
+                            <i class="fa-duotone fa-pen"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [CascadingParameter(Name = "AccountId")] string AccountId { get; set; } = "";
+    [Inject] OrganizationService OrgService { get; set; } = default!;
+
+    private List<Division> divisions = new();
+    private List<Company> companies = new();
+    private Division editingDivision = new();
+    private bool divisionsEnabled;
+    private bool showForm;
+    private bool saving;
+    private string? error;
+    private string? orgId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(AccountId)) return;
+        try
+        {
+            var orgs = await OrgService.GetOrganizationsAsync(AccountId);
+            var org = orgs.FirstOrDefault();
+            if (org == null) return;
+
+            orgId = org.id;
+            divisionsEnabled = org.DivisionsEnabled;
+
+            if (divisionsEnabled)
+            {
+                divisions = await OrgService.GetDivisionsAsync(AccountId, orgId);
+                companies = await OrgService.GetCompaniesAsync(AccountId, orgId);
+            }
+        }
+        catch { /* Cosmos not configured */ }
+    }
+
+    private void ShowCreateForm()
+    {
+        editingDivision = new Division
+        {
+            AccountId = AccountId,
+            OrganizationId = orgId ?? ""
+        };
+        showForm = true;
+        error = null;
+    }
+
+    private void EditDivision(Division division)
+    {
+        editingDivision = division;
+        showForm = true;
+        error = null;
+    }
+
+    private async Task SaveDivision()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(editingDivision.Name))
+        {
+            error = "Division name is required.";
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            if (string.IsNullOrEmpty(editingDivision.id))
+            {
+                var created = await OrgService.CreateDivisionAsync(editingDivision);
+                divisions.Add(created);
+            }
+            else
+            {
+                await OrgService.UpdateDivisionAsync(editingDivision);
+            }
+            showForm = false;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        saving = false;
+    }
+
+    private int GetCompanyCount(string divisionId)
+    {
+        return companies.Count(c => c.DivisionId == divisionId);
+    }
+}

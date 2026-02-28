@@ -1,0 +1,97 @@
+@page "/invoices"
+
+<h1 class="bs-page-title">Invoices</h1>
+<p class="bs-page-subtitle">Manage customer invoices</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-file-invoice"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" style="width: auto;" @bind="statusFilter" @bind:after="LoadData">
+                <option value="">All Statuses</option>
+                @foreach (var s in Enum.GetValues<InvoiceStatus>())
+                {
+                    <option value="@s">@s</option>
+                }
+            </select>
+        </div>
+        <div class="bs-toolbar-actions">
+            <a href="invoices/new" class="btn btn-primary btn-sm">
+                <i class="fa-duotone fa-plus me-1"></i> New Invoice
+            </a>
+        </div>
+    </div>
+
+    @if (invoices.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-file-invoice"></i>
+            <h4>No invoices</h4>
+            <p>Create your first invoice to start tracking receivables.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table bs-table-striped">
+            <thead>
+                <tr>
+                    <th>Number</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Due Date</th>
+                    <th class="bs-amount">Total</th>
+                    <th class="bs-amount">Balance</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var inv in invoices)
+                {
+                    <tr style="cursor: pointer;" @onclick="() => Nav.NavigateTo(GetUrl(inv.id))">
+                        <td><a href="invoices/@inv.id">@inv.InvoiceNumber</a></td>
+                        <td>@inv.InvoiceDate.ToString("MM/dd/yyyy")</td>
+                        <td>@inv.CustomerName</td>
+                        <td>@inv.DueDate.ToString("MM/dd/yyyy")</td>
+                        <td class="bs-amount">@inv.Total.ToString("N2")</td>
+                        <td class="bs-amount">@inv.BalanceDue.ToString("N2")</td>
+                        <td><span class="bs-badge bs-badge-@inv.Status.ToString().ToLower()">@inv.Status</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] InvoiceService Invoices { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    private List<Invoice> invoices = new();
+    private string statusFilter = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            InvoiceStatus? status = string.IsNullOrEmpty(statusFilter) ? null : Enum.Parse<InvoiceStatus>(statusFilter);
+            invoices = await Invoices.GetInvoicesAsync(CompanyId!, status);
+        }
+        catch { }
+    }
+
+    private string GetUrl(string id) => $"invoices/{id}";
+}

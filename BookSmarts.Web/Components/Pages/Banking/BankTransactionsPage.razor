@@ -1,0 +1,601 @@
+@page "/banking/transactions"
+
+<h1 class="bs-page-title">Bank Transactions</h1>
+<p class="bs-page-subtitle">Review and categorize imported bank transactions</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-money-bill-transfer"></i>
+        <h4>No Company Selected</h4>
+        <p>Select a company to view bank transactions.</p>
+    </div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+    @if (!string.IsNullOrEmpty(success))
+    {
+        <div class="alert alert-success">@success</div>
+    }
+
+    <!-- Filters -->
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" style="width: auto" @bind="statusFilter" @bind:after="LoadTransactions">
+                <option value="">All Statuses</option>
+                <option value="0">Uncategorized</option>
+                <option value="1">Categorized</option>
+                <option value="2">Excluded</option>
+            </select>
+            <select class="form-select form-select-sm" style="width: auto" @bind="connectionFilter" @bind:after="LoadTransactions">
+                <option value="">All Connections</option>
+                @foreach (var conn in connections)
+                {
+                    <option value="@conn.id">@conn.InstitutionName</option>
+                }
+            </select>
+        </div>
+        @if (selectedTxnIds.Count > 1)
+        {
+            <div class="bs-toolbar-actions">
+                <span class="text-muted small me-2">@selectedTxnIds.Count selected</span>
+                <button class="btn btn-primary btn-sm" @onclick="ShowBulkCategorize">
+                    <i class="fa-duotone fa-tags me-1"></i> Bulk Categorize
+                </button>
+            </div>
+        }
+    </div>
+
+    <div class="bs-two-panel">
+        <!-- Left: Transaction list -->
+        <div class="bs-two-panel-left">
+            @if (transactions.Count == 0)
+            {
+                <div class="bs-empty">
+                    <i class="fa-duotone fa-money-bill-transfer"></i>
+                    <h4>No Transactions</h4>
+                    <p>Import transactions by syncing a bank connection.</p>
+                </div>
+            }
+            else
+            {
+                <table class="bs-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 30px">
+                                <input type="checkbox" class="bs-txn-checkbox" @onchange="ToggleSelectAll"
+                                    checked="@(selectedTxnIds.Count == transactions.Count && transactions.Count > 0)" />
+                            </th>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th class="bs-amount">Amount</th>
+                            <th>Status</th>
+                            <th>Account</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var txn in transactions)
+                        {
+                            <tr class="bs-txn-row @(selectedTxn?.id == txn.id ? "selected" : "") @(txn.MatchedRuleId != null && txn.Status == BankTransactionStatus.Uncategorized ? "bs-auto-match" : "")"
+                                @onclick="() => SelectTransaction(txn)">
+                                <td @onclick:stopPropagation>
+                                    <input type="checkbox" class="bs-txn-checkbox"
+                                        checked="@selectedTxnIds.Contains(txn.id)"
+                                        @onchange="() => ToggleSelection(txn.id)" />
+                                </td>
+                                <td>@txn.TransactionDate.ToString("MM/dd/yy")</td>
+                                <td>
+                                    @if (txn.MatchedRuleId != null && txn.Status == BankTransactionStatus.Uncategorized)
+                                    {
+                                        <i class="fa-duotone fa-sparkles bs-auto-match-icon me-1" title="Auto-matched by rule"></i>
+                                    }
+                                    @(txn.MerchantName ?? txn.Name)
+                                    @if (txn.IsPending)
+                                    {
+                                        <span class="text-muted small ms-1">(Pending)</span>
+                                    }
+                                </td>
+                                <td class="bs-amount @(txn.Amount > 0 ? "bs-amount-negative" : "bs-amount-positive")">
+                                    @(txn.Amount > 0 ? "-" : "+")@Math.Abs(txn.Amount).ToString("N2")
+                                </td>
+                                <td><span class="bs-badge bs-badge-@txn.Status.ToString().ToLower()">@txn.Status</span></td>
+                                <td>@(txn.CategorizedAccountName ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <!-- Right: Categorization panel -->
+        <div class="bs-two-panel-right">
+            @if (selectedTxn != null)
+            {
+                <div class="bs-categorize-panel">
+                    <h5>Transaction Details</h5>
+
+                    <div class="mb-2">
+                        <div class="small text-muted">Merchant / Description</div>
+                        <div class="fw-semibold">@(selectedTxn.MerchantName ?? selectedTxn.Name)</div>
+                    </div>
+                    <div class="mb-2">
+                        <div class="small text-muted">Date</div>
+                        <div>@selectedTxn.TransactionDate.ToString("MMMM d, yyyy")</div>
+                    </div>
+                    <div class="mb-2">
+                        <div class="small text-muted">Amount</div>
+                        <div class="fw-semibold @(selectedTxn.Amount > 0 ? "bs-amount-negative" : "bs-amount-positive")">
+                            @(selectedTxn.Amount > 0 ? "-" : "+")@Math.Abs(selectedTxn.Amount).ToString("C2")
+                        </div>
+                    </div>
+                    @if (selectedTxn.PlaidCategories.Count > 0)
+                    {
+                        <div class="mb-3">
+                            <div class="small text-muted">Plaid Categories</div>
+                            <div>@string.Join(" > ", selectedTxn.PlaidCategories)</div>
+                        </div>
+                    }
+
+                    @if (selectedTxn.Status == BankTransactionStatus.Uncategorized)
+                    {
+                        <hr />
+                        <h6>Categorize</h6>
+
+                        <div class="mb-2">
+                            <label class="form-label small">Assign to Account</label>
+                            <select class="form-select form-select-sm" @bind="categorizeAccountId">
+                                <option value="">— Select Account —</option>
+                                @foreach (var category in Enum.GetValues<AccountCategory>())
+                                {
+                                    var categoryAccounts = coaAccounts.Where(a => a.IsActive && a.Category == category).OrderBy(a => a.AccountNumber).ToList();
+                                    if (categoryAccounts.Count > 0)
+                                    {
+                                        <optgroup label="@category">
+                                            @foreach (var acct in categoryAccounts)
+                                            {
+                                                <option value="@acct.id">@acct.AccountNumber — @acct.Name</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        @if (selectedTxn.MatchedRuleId != null)
+                        {
+                            <div class="small text-muted mb-2">
+                                <i class="fa-duotone fa-sparkles bs-auto-match-icon me-1"></i>
+                                Suggested by auto-categorization rule
+                            </div>
+                        }
+
+                        <div class="form-check mb-2">
+                            <input type="checkbox" class="form-check-input" id="createRule"
+                                checked="@createRuleOnCategorize"
+                                @onchange="OnCreateRuleToggled" />
+                            <label class="form-check-label small" for="createRule">Create auto-categorization rule</label>
+                        </div>
+
+                        @if (createRuleOnCategorize && rulePreview != null && rulePreview.TotalCount > 0)
+                        {
+                            <div class="border rounded p-2 mb-3" style="max-height: 260px; overflow-y: auto; font-size: 0.8rem;">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="fw-semibold">@rulePreview.TotalCount other transaction(s) match</span>
+                                    <div class="d-flex gap-1">
+                                        <button class="btn btn-link btn-sm p-0" style="font-size: 0.75rem" @onclick="SelectAllRuleMatches">All</button>
+                                        <span class="text-muted">|</span>
+                                        <button class="btn btn-link btn-sm p-0" style="font-size: 0.75rem" @onclick="SelectNoneRuleMatches">None</button>
+                                    </div>
+                                </div>
+
+                                @if (rulePreview.MerchantMatches.Count > 0)
+                                {
+                                    <div class="py-1 border-top">
+                                        <span class="text-muted" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                                            <i class="fa-duotone fa-store me-1"></i>Merchant name match (@rulePreview.MerchantMatches.Count)
+                                        </span>
+                                    </div>
+                                    @foreach (var match in rulePreview.MerchantMatches)
+                                    {
+                                        <div class="d-flex align-items-center gap-2 py-1 border-top">
+                                            <input type="checkbox" class="bs-txn-checkbox"
+                                                checked="@rulePreviewSelectedIds.Contains(match.id)"
+                                                @onchange="() => ToggleRulePreviewSelection(match.id)" />
+                                            <span class="flex-grow-1 text-truncate">@(match.MerchantName ?? match.Name)</span>
+                                            <span class="bs-amount @(match.Amount > 0 ? "bs-amount-negative" : "bs-amount-positive")" style="font-size: 0.75rem">
+                                                @(match.Amount > 0 ? "-" : "+")@Math.Abs(match.Amount).ToString("N2")
+                                            </span>
+                                            <span class="text-muted" style="font-size: 0.7rem">@match.TransactionDate.ToString("MM/dd")</span>
+                                        </div>
+                                    }
+                                }
+
+                                @if (rulePreview.CategoryMatches.Count > 0)
+                                {
+                                    <div class="py-1 border-top @(rulePreview.MerchantMatches.Count > 0 ? "mt-1" : "")">
+                                        <span class="text-muted" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                                            <i class="fa-duotone fa-tag me-1"></i>Plaid category match (@rulePreview.CategoryMatches.Count)
+                                        </span>
+                                    </div>
+                                    @foreach (var match in rulePreview.CategoryMatches)
+                                    {
+                                        <div class="d-flex align-items-center gap-2 py-1 border-top">
+                                            <input type="checkbox" class="bs-txn-checkbox"
+                                                checked="@rulePreviewSelectedIds.Contains(match.id)"
+                                                @onchange="() => ToggleRulePreviewSelection(match.id)" />
+                                            <span class="flex-grow-1 text-truncate">@(match.MerchantName ?? match.Name)</span>
+                                            <span class="bs-amount @(match.Amount > 0 ? "bs-amount-negative" : "bs-amount-positive")" style="font-size: 0.75rem">
+                                                @(match.Amount > 0 ? "-" : "+")@Math.Abs(match.Amount).ToString("N2")
+                                            </span>
+                                            <span class="text-muted" style="font-size: 0.7rem">@match.TransactionDate.ToString("MM/dd")</span>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                        else if (createRuleOnCategorize && rulePreviewLoaded)
+                        {
+                            <div class="small text-muted mb-3">No other uncategorized transactions match this merchant or category.</div>
+                        }
+
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary btn-sm" @onclick="CategorizeSelected" disabled="@(string.IsNullOrEmpty(categorizeAccountId) || categorizing)">
+                                @if (categorizing)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                Categorize@(createRuleOnCategorize && rulePreviewSelectedIds.Count > 0 ? $" {1 + rulePreviewSelectedIds.Count}" : "")
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="ExcludeSelected" disabled="@categorizing">
+                                Exclude
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="ClearSelection">
+                                Cancel
+                            </button>
+                        </div>
+                    }
+                    else if (selectedTxn.Status == BankTransactionStatus.Categorized)
+                    {
+                        <hr />
+                        <div class="mb-2">
+                            <div class="small text-muted">Assigned Account</div>
+                            <div class="fw-semibold">@selectedTxn.CategorizedAccountNumber — @selectedTxn.CategorizedAccountName</div>
+                        </div>
+                        @if (!string.IsNullOrEmpty(selectedTxn.JournalEntryId))
+                        {
+                            <a href="journal-entries/@selectedTxn.JournalEntryId" class="btn btn-outline-primary btn-sm me-2">
+                                <i class="fa-duotone fa-pen-to-square me-1"></i> View Journal Entry
+                            </a>
+                        }
+                        <button class="btn btn-outline-warning btn-sm" @onclick="UncategorizeSelected" disabled="@categorizing">
+                            @if (categorizing)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Uncategorize
+                        </button>
+                    }
+                    else if (selectedTxn.Status == BankTransactionStatus.Excluded)
+                    {
+                        <hr />
+                        <div class="small text-muted mb-2">This transaction has been excluded.</div>
+                    }
+                </div>
+            }
+            else if (bulkMode)
+            {
+                <div class="bs-categorize-panel">
+                    <h5>Bulk Categorize (@selectedTxnIds.Count transactions)</h5>
+                    <div class="mb-2">
+                        <label class="form-label small">Assign all to Account</label>
+                        <select class="form-select form-select-sm" @bind="categorizeAccountId">
+                            <option value="">— Select Account —</option>
+                            @foreach (var category in Enum.GetValues<AccountCategory>())
+                            {
+                                var categoryAccounts = coaAccounts.Where(a => a.IsActive && a.Category == category).OrderBy(a => a.AccountNumber).ToList();
+                                if (categoryAccounts.Count > 0)
+                                {
+                                    <optgroup label="@category">
+                                        @foreach (var acct in categoryAccounts)
+                                        {
+                                            <option value="@acct.id">@acct.AccountNumber — @acct.Name</option>
+                                        }
+                                    </optgroup>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary btn-sm" @onclick="BulkCategorize" disabled="@(string.IsNullOrEmpty(categorizeAccountId) || categorizing)">
+                            @if (categorizing)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Categorize All
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="CancelBulk">Cancel</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="bs-categorize-panel">
+                    <div class="text-muted text-center small py-4">
+                        <i class="fa-duotone fa-hand-pointer d-block mb-2" style="font-size: 2rem; opacity: 0.3"></i>
+                        Select a transaction to categorize it
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+
+    [Inject] BankingService Banking { get; set; } = default!;
+    [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
+
+    private List<BankTransaction> transactions = new();
+    private List<BankConnection> connections = new();
+    private List<ChartOfAccountEntry> coaAccounts = new();
+    private BankTransaction? selectedTxn;
+    private HashSet<string> selectedTxnIds = new();
+    private string? error;
+    private string? success;
+    private string statusFilter = "0"; // Default to Uncategorized
+    private string connectionFilter = "";
+    private string categorizeAccountId = "";
+    private bool createRuleOnCategorize;
+    private bool categorizing;
+    private bool bulkMode;
+    private BankingService.RulePreviewResult? rulePreview;
+    private HashSet<string> rulePreviewSelectedIds = new();
+    private bool rulePreviewLoaded;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        connections = await Banking.GetConnectionsAsync(CompanyId);
+        coaAccounts = await CoaService.GetChartOfAccountsAsync(CompanyId);
+        await LoadTransactions();
+    }
+
+    private async Task LoadTransactions()
+    {
+        error = null;
+        success = null;
+        try
+        {
+            BankTransactionStatus? status = string.IsNullOrEmpty(statusFilter) ? null : (BankTransactionStatus)int.Parse(statusFilter);
+            string? connId = string.IsNullOrEmpty(connectionFilter) ? null : connectionFilter;
+
+            transactions = await Banking.GetTransactionsAsync(CompanyId!, status, connId);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void SelectTransaction(BankTransaction txn)
+    {
+        bulkMode = false;
+        selectedTxn = txn;
+
+        // Pre-fill categorize account if auto-matched
+        if (txn.Status == BankTransactionStatus.Uncategorized && !string.IsNullOrEmpty(txn.CategorizedAccountId))
+            categorizeAccountId = txn.CategorizedAccountId;
+        else
+            categorizeAccountId = "";
+
+        createRuleOnCategorize = false;
+        rulePreview = null;
+        rulePreviewSelectedIds.Clear();
+        rulePreviewLoaded = false;
+    }
+
+    private void ClearSelection()
+    {
+        selectedTxn = null;
+        categorizeAccountId = "";
+        createRuleOnCategorize = false;
+        rulePreview = null;
+        rulePreviewSelectedIds.Clear();
+        rulePreviewLoaded = false;
+    }
+
+    private async Task OnCreateRuleToggled(ChangeEventArgs e)
+    {
+        createRuleOnCategorize = (bool)(e.Value ?? false);
+        rulePreview = null;
+        rulePreviewSelectedIds.Clear();
+        rulePreviewLoaded = false;
+
+        if (createRuleOnCategorize && selectedTxn != null)
+        {
+            var merchantName = selectedTxn.MerchantName ?? selectedTxn.Name;
+            rulePreview = await Banking.FindMatchingUncategorizedAsync(
+                CompanyId!, merchantName,
+                selectedTxn.PlaidCategories.Count > 0 ? selectedTxn.PlaidCategories : null,
+                selectedTxn.id);
+            // Auto-select merchant matches, not category matches
+            rulePreviewSelectedIds = new(rulePreview.MerchantMatches.Select(t => t.id));
+            rulePreviewLoaded = true;
+        }
+    }
+
+    private void ToggleRulePreviewSelection(string txnId)
+    {
+        if (rulePreviewSelectedIds.Contains(txnId))
+            rulePreviewSelectedIds.Remove(txnId);
+        else
+            rulePreviewSelectedIds.Add(txnId);
+    }
+
+    private void SelectAllRuleMatches()
+    {
+        if (rulePreview == null) return;
+        rulePreviewSelectedIds = new(
+            rulePreview.MerchantMatches.Select(t => t.id)
+                .Concat(rulePreview.CategoryMatches.Select(t => t.id)));
+    }
+
+    private void SelectNoneRuleMatches()
+    {
+        rulePreviewSelectedIds.Clear();
+    }
+
+    private void ToggleSelection(string txnId)
+    {
+        if (selectedTxnIds.Contains(txnId))
+            selectedTxnIds.Remove(txnId);
+        else
+            selectedTxnIds.Add(txnId);
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        if ((bool)(e.Value ?? false))
+            selectedTxnIds = new(transactions.Select(t => t.id));
+        else
+            selectedTxnIds.Clear();
+    }
+
+    private void ShowBulkCategorize()
+    {
+        selectedTxn = null;
+        bulkMode = true;
+        categorizeAccountId = "";
+    }
+
+    private void CancelBulk()
+    {
+        bulkMode = false;
+        selectedTxnIds.Clear();
+    }
+
+    private async Task CategorizeSelected()
+    {
+        if (selectedTxn == null || string.IsNullOrEmpty(categorizeAccountId)) return;
+
+        var acct = coaAccounts.FirstOrDefault(a => a.id == categorizeAccountId);
+        if (acct == null) return;
+
+        categorizing = true;
+        error = null;
+        try
+        {
+            // Categorize the selected transaction (and create rule if checked)
+            await Banking.CategorizeTransactionAsync(selectedTxn.id, CompanyId!,
+                acct.id, acct.AccountNumber, acct.Name, createRuleOnCategorize);
+
+            // Also categorize any checked preview matches
+            var extraCount = 0;
+            if (createRuleOnCategorize && rulePreviewSelectedIds.Count > 0)
+            {
+                extraCount = await Banking.BulkCategorizeAsync(
+                    rulePreviewSelectedIds.ToList(), CompanyId!,
+                    acct.id, acct.AccountNumber, acct.Name);
+            }
+
+            var total = 1 + extraCount;
+            success = total == 1
+                ? "Transaction categorized and journal entry created."
+                : $"{total} transactions categorized with journal entries created.";
+
+            selectedTxn = null;
+            rulePreview = null;
+            rulePreviewSelectedIds.Clear();
+            rulePreviewLoaded = false;
+            await LoadTransactions();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            categorizing = false;
+        }
+    }
+
+    private async Task ExcludeSelected()
+    {
+        if (selectedTxn == null) return;
+
+        categorizing = true;
+        error = null;
+        try
+        {
+            await Banking.ExcludeTransactionAsync(selectedTxn.id, CompanyId!);
+            success = "Transaction excluded.";
+            selectedTxn = null;
+            await LoadTransactions();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            categorizing = false;
+        }
+    }
+
+    private async Task UncategorizeSelected()
+    {
+        if (selectedTxn == null) return;
+
+        categorizing = true;
+        error = null;
+        try
+        {
+            await Banking.UncategorizeTransactionAsync(selectedTxn.id, CompanyId!);
+            success = "Transaction uncategorized and journal entry voided.";
+            selectedTxn = null;
+            await LoadTransactions();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            categorizing = false;
+        }
+    }
+
+    private async Task BulkCategorize()
+    {
+        if (selectedTxnIds.Count == 0 || string.IsNullOrEmpty(categorizeAccountId)) return;
+
+        var acct = coaAccounts.FirstOrDefault(a => a.id == categorizeAccountId);
+        if (acct == null) return;
+
+        categorizing = true;
+        error = null;
+        try
+        {
+            var count = await Banking.BulkCategorizeAsync(
+                selectedTxnIds.ToList(), CompanyId!,
+                acct.id, acct.AccountNumber, acct.Name);
+            success = $"Categorized {count} transaction(s).";
+            bulkMode = false;
+            selectedTxnIds.Clear();
+            await LoadTransactions();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            categorizing = false;
+        }
+    }
+}

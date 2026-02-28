@@ -1,0 +1,243 @@
+@page "/settings/companies"
+
+<h1 class="bs-page-title">Companies</h1>
+<p class="bs-page-subtitle">Manage the companies in your organization</p>
+
+@if (showForm)
+{
+    <div class="bs-card mb-3" style="max-width: 600px;">
+        <h5>@(editingCompany.id == "" ? "New Company" : "Edit Company")</h5>
+        <div class="mb-3">
+            <label class="form-label">Company Name</label>
+            <input type="text" class="form-control" @bind="editingCompany.Name" placeholder="e.g. West Coast Division LLC" />
+        </div>
+        @if (divisionsEnabled && divisions.Count > 0)
+        {
+            <div class="mb-3">
+                <label class="form-label">Division</label>
+                <select class="form-select" @bind="editingCompany.DivisionId">
+                    <option value="">— No division —</option>
+                    @foreach (var div in divisions)
+                    {
+                        <option value="@div.id">@div.Name</option>
+                    }
+                </select>
+            </div>
+        }
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Currency</label>
+                <select class="form-select" @bind="editingCompany.Currency">
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="GBP">GBP</option>
+                    <option value="CAD">CAD</option>
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Fiscal Year Start</label>
+                <select class="form-select" @bind="editingCompany.FiscalYearStartMonth">
+                    @for (int m = 1; m <= 12; m++)
+                    {
+                        <option value="@m">@(new DateTime(2000, m, 1).ToString("MMMM"))</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Tax ID</label>
+            <input type="text" class="form-control" @bind="editingCompany.TaxId" placeholder="EIN or Tax ID" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Address</label>
+            <textarea class="form-control" rows="2" @bind="editingCompany.Address"></textarea>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Phone</label>
+                <input type="text" class="form-control" @bind="editingCompany.Phone" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" @bind="editingCompany.Email" />
+            </div>
+        </div>
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" @bind="seedCoa" id="seedCoaCheck">
+            <label class="form-check-label" for="seedCoaCheck">Create default chart of accounts (US GAAP)</label>
+        </div>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger">@error</div>
+        }
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" @onclick="SaveCompany" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save
+            </button>
+            <button class="btn btn-outline-secondary" @onclick="() => showForm = false">Cancel</button>
+        </div>
+    </div>
+}
+else if (companies.Count == 0)
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-buildings"></i>
+        <h4>No companies yet</h4>
+        <p>Add a company to start tracking financial data.</p>
+        <button class="btn btn-primary btn-sm" @onclick="ShowCreateForm">
+            <i class="fa-duotone fa-plus me-1"></i> Add Company
+        </button>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div></div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-primary btn-sm" @onclick="ShowCreateForm">
+                <i class="fa-duotone fa-plus me-1"></i> Add Company
+            </button>
+        </div>
+    </div>
+
+    <table class="bs-table bs-table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                @if (divisionsEnabled)
+                {
+                    <th>Division</th>
+                }
+                <th>Currency</th>
+                <th>Tax ID</th>
+                <th>Fiscal Year Start</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var company in companies)
+            {
+                <tr>
+                    <td><strong>@company.Name</strong></td>
+                    @if (divisionsEnabled)
+                    {
+                        <td>@GetDivisionName(company.DivisionId)</td>
+                    }
+                    <td>@company.Currency</td>
+                    <td>@(company.TaxId ?? "—")</td>
+                    <td>@(new DateTime(2000, company.FiscalYearStartMonth, 1).ToString("MMMM"))</td>
+                    <td>@company.CreatedUtc.ToString("MM/dd/yyyy")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditCompany(company)">
+                            <i class="fa-duotone fa-pen"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [CascadingParameter(Name = "AccountId")] string AccountId { get; set; } = "";
+    [CascadingParameter(Name = "RefreshCompanies")] Func<Task>? RefreshCompanies { get; set; }
+    [Inject] OrganizationService OrgService { get; set; } = default!;
+    [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
+
+    private List<Company> companies = new();
+    private List<Division> divisions = new();
+    private Company editingCompany = new();
+    private bool divisionsEnabled;
+    private bool showForm;
+    private bool saving;
+    private bool seedCoa = true;
+    private string? error;
+    private string? orgId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(AccountId)) return;
+        try
+        {
+            var orgs = await OrgService.GetOrganizationsAsync(AccountId);
+            var org = orgs.FirstOrDefault();
+            orgId = org?.id;
+            divisionsEnabled = org?.DivisionsEnabled ?? false;
+
+            companies = await OrgService.GetCompaniesAsync(AccountId, orgId);
+
+            if (divisionsEnabled && orgId != null)
+                divisions = await OrgService.GetDivisionsAsync(AccountId, orgId);
+        }
+        catch { /* Cosmos not configured */ }
+    }
+
+    private void ShowCreateForm()
+    {
+        editingCompany = new Company
+        {
+            AccountId = AccountId,
+            OrganizationId = orgId ?? "",
+            Currency = "USD",
+            FiscalYearStartMonth = 1
+        };
+        seedCoa = true;
+        showForm = true;
+        error = null;
+    }
+
+    private void EditCompany(Company company)
+    {
+        editingCompany = company;
+        seedCoa = false;
+        showForm = true;
+        error = null;
+    }
+
+    private async Task SaveCompany()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(editingCompany.Name))
+        {
+            error = "Company name is required.";
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            if (string.IsNullOrEmpty(editingCompany.id))
+            {
+                var created = await OrgService.CreateCompanyAsync(editingCompany);
+                companies.Add(created);
+
+                if (seedCoa)
+                    await CoaService.SeedDefaultChartOfAccountsAsync(created.id);
+            }
+            else
+            {
+                await OrgService.UpdateCompanyAsync(editingCompany);
+            }
+            showForm = false;
+
+            if (RefreshCompanies != null)
+                await RefreshCompanies();
+
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        saving = false;
+    }
+
+    private string GetDivisionName(string? divisionId)
+    {
+        if (string.IsNullOrEmpty(divisionId)) return "—";
+        return divisions.FirstOrDefault(d => d.id == divisionId)?.Name ?? "—";
+    }
+}

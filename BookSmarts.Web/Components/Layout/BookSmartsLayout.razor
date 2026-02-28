@@ -1,0 +1,425 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@using Daisi.SDK.Web.Services
+@using Daisi.SDK.Models
+@using BookSmarts.Web.Components.Pages.Security
+
+@if (isAuthenticated && showPinEntry)
+{
+    <!-- PIN entry overlay — shown when encryption is enabled but not yet unlocked -->
+    @if (showRecovery)
+    {
+        <PinReset AccountId="@accountId" OnUnlocked="OnPinUnlocked" OnCancel="() => showRecovery = false" />
+    }
+    else
+    {
+        <PinEntry AccountId="@accountId" OnUnlocked="OnPinUnlocked" OnForgotPin="() => showRecovery = true" />
+    }
+}
+else if (isAuthenticated)
+{
+<div class="bs-app @(sidebarCollapsed ? "sidebar-collapsed" : "")">
+    <!-- Sidebar -->
+    <nav class="bs-sidebar" id="sidebar">
+        <div class="bs-sidebar-header">
+            <span class="bs-logo">
+                <i class="fa-duotone fa-book-open"></i>
+                @if (!sidebarCollapsed)
+                {
+                    <span class="ms-2">BookSmarts</span>
+                }
+            </span>
+            <button class="btn btn-sm bs-sidebar-toggle" @onclick="ToggleSidebar">
+                <i class="fa-duotone @(sidebarCollapsed ? "fa-angles-right" : "fa-angles-left")"></i>
+            </button>
+        </div>
+
+        <div class="bs-sidebar-nav">
+            <NavLink class="bs-nav-item" href="" Match="NavLinkMatch.All">
+                <i class="fa-duotone fa-gauge-high"></i>
+                @if (!sidebarCollapsed) { <span>Dashboard</span> }
+            </NavLink>
+
+            @if (!sidebarCollapsed) { <div class="bs-nav-section">Transactions</div> }
+            <NavLink class="bs-nav-item" href="journal-entries">
+                <i class="fa-duotone fa-pen-to-square"></i>
+                @if (!sidebarCollapsed) { <span>Journal Entries</span> }
+            </NavLink>
+
+            @if (!sidebarCollapsed) { <div class="bs-nav-section">Banking</div> }
+            <NavLink class="bs-nav-item" href="banking/connections">
+                <i class="fa-duotone fa-building-columns"></i>
+                @if (!sidebarCollapsed) { <span>Bank Connections</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="banking/transactions">
+                <i class="fa-duotone fa-money-bill-transfer"></i>
+                @if (!sidebarCollapsed)
+                {
+                    <span>Bank Transactions</span>
+                    @if (uncategorizedCount > 0)
+                    {
+                        <span class="bs-nav-badge">@uncategorizedCount</span>
+                    }
+                }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="banking/rules">
+                <i class="fa-duotone fa-sparkles"></i>
+                @if (!sidebarCollapsed) { <span>Auto-Categorization</span> }
+            </NavLink>
+
+            @if (!sidebarCollapsed) { <div class="bs-nav-section">Receivables</div> }
+            <NavLink class="bs-nav-item" href="customers">
+                <i class="fa-duotone fa-users"></i>
+                @if (!sidebarCollapsed) { <span>Customers</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="invoices">
+                <i class="fa-duotone fa-file-invoice"></i>
+                @if (!sidebarCollapsed) { <span>Invoices</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="payments/receive">
+                <i class="fa-duotone fa-hand-holding-dollar"></i>
+                @if (!sidebarCollapsed) { <span>Receive Payment</span> }
+            </NavLink>
+
+            @if (!sidebarCollapsed) { <div class="bs-nav-section">Payables</div> }
+            <NavLink class="bs-nav-item" href="vendors">
+                <i class="fa-duotone fa-truck"></i>
+                @if (!sidebarCollapsed) { <span>Vendors</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="bills">
+                <i class="fa-duotone fa-file-invoice-dollar"></i>
+                @if (!sidebarCollapsed) { <span>Bills</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="payments/make">
+                <i class="fa-duotone fa-money-check-dollar"></i>
+                @if (!sidebarCollapsed) { <span>Make Payment</span> }
+            </NavLink>
+
+            @if (!sidebarCollapsed) { <div class="bs-nav-section">Accounting</div> }
+            <NavLink class="bs-nav-item" href="chart-of-accounts">
+                <i class="fa-duotone fa-list-tree"></i>
+                @if (!sidebarCollapsed) { <span>Chart of Accounts</span> }
+            </NavLink>
+
+            @if (!sidebarCollapsed) { <div class="bs-nav-section">Reports</div> }
+            <NavLink class="bs-nav-item" href="trial-balance">
+                <i class="fa-duotone fa-scale-balanced"></i>
+                @if (!sidebarCollapsed) { <span>Trial Balance</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="reports/ar-aging">
+                <i class="fa-duotone fa-clock-rotate-left"></i>
+                @if (!sidebarCollapsed) { <span>AR Aging</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="reports/ap-aging">
+                <i class="fa-duotone fa-hourglass-half"></i>
+                @if (!sidebarCollapsed) { <span>AP Aging</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="reports/balance-sheet">
+                <i class="fa-duotone fa-building-columns"></i>
+                @if (!sidebarCollapsed) { <span>Balance Sheet</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="reports/income-statement">
+                <i class="fa-duotone fa-chart-line"></i>
+                @if (!sidebarCollapsed) { <span>Income Statement</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="reports/cash-flow">
+                <i class="fa-duotone fa-money-bill-wave"></i>
+                @if (!sidebarCollapsed) { <span>Cash Flow</span> }
+            </NavLink>
+
+            @if (!sidebarCollapsed) { <div class="bs-nav-section">Settings</div> }
+            <NavLink class="bs-nav-item" href="settings/organization">
+                <i class="fa-duotone fa-building"></i>
+                @if (!sidebarCollapsed) { <span>Organization</span> }
+            </NavLink>
+            @if (divisionsEnabled)
+            {
+                <NavLink class="bs-nav-item" href="settings/divisions">
+                    <i class="fa-duotone fa-sitemap"></i>
+                    @if (!sidebarCollapsed) { <span>Divisions</span> }
+                </NavLink>
+            }
+            <NavLink class="bs-nav-item" href="settings/companies">
+                <i class="fa-duotone fa-buildings"></i>
+                @if (!sidebarCollapsed) { <span>Companies</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="settings/fiscal-periods">
+                <i class="fa-duotone fa-calendar-days"></i>
+                @if (!sidebarCollapsed) { <span>Fiscal Periods</span> }
+            </NavLink>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <div class="bs-main">
+        <!-- Top header -->
+        <header class="bs-header">
+            <div class="bs-header-left">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb mb-0">
+                        <li class="breadcrumb-item"><a href="/">BookSmarts</a></li>
+                    </ol>
+                </nav>
+            </div>
+            <div class="bs-header-right">
+                <!-- Company selector -->
+                @if (companies.Count > 0)
+                {
+                    <select class="form-select form-select-sm bs-company-select" @bind="selectedCompanyId" @bind:after="OnCompanyChanged">
+                        @foreach (var company in companies)
+                        {
+                            <option value="@company.id">@company.Name</option>
+                        }
+                    </select>
+                }
+
+                <!-- Accrual/Cash toggle -->
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn @(cashBasis ? "btn-outline-secondary" : "btn-primary") btn-sm" @onclick="@(() => SetBasis(false))">Accrual</button>
+                    <button type="button" class="btn @(cashBasis ? "btn-primary" : "btn-outline-secondary") btn-sm" @onclick="@(() => SetBasis(true))">Cash</button>
+                </div>
+
+                <!-- Theme toggle -->
+                <button class="btn btn-sm bs-theme-toggle" @onclick="ToggleTheme">
+                    <i class="fa-duotone @(darkMode ? "fa-sun" : "fa-moon")"></i>
+                </button>
+
+                <!-- User menu -->
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fa-duotone fa-user me-1"></i> @userName
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#" @onclick:preventDefault @onclick="Logout">Logout</a></li>
+                    </ul>
+                </div>
+            </div>
+        </header>
+
+        <!-- Page content -->
+        <main class="bs-content">
+            <CascadingValue Value="selectedCompanyId" Name="CompanyId">
+                <CascadingValue Value="accountId" Name="AccountId">
+                    <CascadingValue Value="cashBasis" Name="CashBasis">
+                        <CascadingValue Value="RefreshCompanies" Name="RefreshCompanies">
+                            @Body
+                        </CascadingValue>
+                    </CascadingValue>
+                </CascadingValue>
+            </CascadingValue>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bs-footer">
+            &copy; @DateTime.UtcNow.Year BookSmarts &mdash; Powered by Daisinet
+        </footer>
+    </div>
+</div>
+}
+
+<MudThemeProvider @bind-IsDarkMode="darkMode" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+@code {
+    private bool isAuthenticated;
+    private bool sidebarCollapsed;
+    private bool darkMode;
+    private bool cashBasis;
+    private bool divisionsEnabled;
+    private string selectedCompanyId = "";
+    private string accountId = "";
+    private string userName = "";
+    private int uncategorizedCount;
+    private List<Company> companies = new();
+
+    // Encryption state
+    private bool showPinEntry;
+    private bool showRecovery;
+
+    [Inject] OrganizationService OrgService { get; set; } = default!;
+    [Inject] AuthService Auth { get; set; } = default!;
+    [Inject] BankingService Banking { get; set; } = default!;
+    [Inject] EncryptionSetupService EncryptionSetup { get; set; } = default!;
+    [Inject] EncryptionContext EncryptionCtx { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            isAuthenticated = await Auth.IsAuthenticatedAsync();
+            if (!isAuthenticated)
+            {
+                var appUrl = DaisiStaticSettings.SsoAppUrl;
+                var authorityUrl = DaisiStaticSettings.SsoAuthorityUrl;
+                var callbackUrl = Uri.EscapeDataString($"{appUrl}/sso/callback");
+                var origin = Uri.EscapeDataString(appUrl ?? "");
+                Nav.NavigateTo(
+                    $"{authorityUrl}/sso/authorize?returnUrl={callbackUrl}&origin={origin}", true);
+                return;
+            }
+
+            userName = await Auth.GetUserNameAsync() ?? "";
+            accountId = await Auth.GetAccountIdAsync() ?? "";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Auth error: {ex.Message}");
+            var appUrl = DaisiStaticSettings.SsoAppUrl;
+            var authorityUrl = DaisiStaticSettings.SsoAuthorityUrl;
+            var callbackUrl = Uri.EscapeDataString($"{appUrl}/sso/callback");
+            var origin = Uri.EscapeDataString(appUrl ?? "");
+            Nav.NavigateTo(
+                $"{authorityUrl}/sso/authorize?returnUrl={callbackUrl}&origin={origin}", true);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && isAuthenticated)
+        {
+            // Load theme preference from localStorage
+            var theme = await JS.InvokeAsync<string?>("localStorage.getItem", "bs-theme");
+            darkMode = theme == "dark";
+            await JS.InvokeVoidAsync("booksmarts.setTheme", darkMode ? "dark" : "light");
+
+            // Check encryption status
+            try
+            {
+                var encConfig = await EncryptionSetup.GetConfigAsync(accountId);
+                if (encConfig is { IsEnabled: true } && !EncryptionCtx.IsUnlocked)
+                {
+                    showPinEntry = true;
+                    StateHasChanged();
+                    return;
+                }
+            }
+            catch { /* Cosmos not configured yet */ }
+
+            // Load org settings and companies for this account
+            try
+            {
+                var orgs = await OrgService.GetOrganizationsAsync(accountId);
+                var org = orgs.FirstOrDefault();
+                divisionsEnabled = org?.DivisionsEnabled ?? false;
+
+                companies = await OrgService.GetCompaniesAsync(accountId);
+                if (companies.Count > 0 && string.IsNullOrEmpty(selectedCompanyId))
+                    selectedCompanyId = companies[0].id;
+            }
+            catch { /* Cosmos not configured yet */ }
+
+            await LoadUncategorizedCount();
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnPinUnlocked()
+    {
+        showPinEntry = false;
+        showRecovery = false;
+
+        // Load org data now that encryption is unlocked
+        try
+        {
+            var orgs = await OrgService.GetOrganizationsAsync(accountId);
+            var org = orgs.FirstOrDefault();
+            divisionsEnabled = org?.DivisionsEnabled ?? false;
+
+            companies = await OrgService.GetCompaniesAsync(accountId);
+            if (companies.Count > 0 && string.IsNullOrEmpty(selectedCompanyId))
+                selectedCompanyId = companies[0].id;
+        }
+        catch { }
+
+        await LoadUncategorizedCount();
+
+        // Trigger sync for connections where LastWebhookUtc > LastSyncUtc
+        await SyncPendingWebhooks();
+
+        StateHasChanged();
+    }
+
+    private async Task SyncPendingWebhooks()
+    {
+        if (string.IsNullOrEmpty(selectedCompanyId)) return;
+        try
+        {
+            var connections = await Banking.GetConnectionsAsync(selectedCompanyId);
+            foreach (var conn in connections)
+            {
+                if (conn.Status == Core.Enums.BankConnectionStatus.Active &&
+                    conn.LastWebhookUtc.HasValue &&
+                    (!conn.LastSyncUtc.HasValue || conn.LastWebhookUtc > conn.LastSyncUtc))
+                {
+                    try
+                    {
+                        await Banking.SyncTransactionsAsync(conn.id, conn.CompanyId);
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch { }
+    }
+
+    private void ToggleSidebar()
+    {
+        sidebarCollapsed = !sidebarCollapsed;
+    }
+
+    private async Task ToggleTheme()
+    {
+        darkMode = !darkMode;
+        var theme = darkMode ? "dark" : "light";
+        await JS.InvokeVoidAsync("localStorage.setItem", "bs-theme", theme);
+        await JS.InvokeVoidAsync("booksmarts.setTheme", theme);
+    }
+
+    private void SetBasis(bool cash)
+    {
+        cashBasis = cash;
+    }
+
+    private async Task OnCompanyChanged()
+    {
+        await LoadUncategorizedCount();
+    }
+
+    private Func<Task> RefreshCompanies => async () =>
+    {
+        try
+        {
+            companies = await OrgService.GetCompaniesAsync(accountId);
+            if (companies.Count > 0 && string.IsNullOrEmpty(selectedCompanyId))
+                selectedCompanyId = companies[0].id;
+            StateHasChanged();
+        }
+        catch { }
+    };
+
+    private async Task LoadUncategorizedCount()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(selectedCompanyId))
+                uncategorizedCount = await Banking.GetUncategorizedCountAsync(selectedCompanyId);
+            else
+                uncategorizedCount = 0;
+        }
+        catch { uncategorizedCount = 0; }
+    }
+
+    private async Task Logout()
+    {
+        await Auth.LogoutAsync();
+        var appUrl = DaisiStaticSettings.SsoAppUrl;
+        var authorityUrl = DaisiStaticSettings.SsoAuthorityUrl;
+        var callbackUrl = Uri.EscapeDataString($"{appUrl}/sso/callback");
+        var origin = Uri.EscapeDataString(appUrl ?? "");
+        Nav.NavigateTo(
+            $"{authorityUrl}/sso/authorize?returnUrl={callbackUrl}&origin={origin}", true);
+    }
+}

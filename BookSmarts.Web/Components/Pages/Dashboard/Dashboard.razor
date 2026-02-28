@@ -1,0 +1,165 @@
+@page "/"
+
+<h1 class="bs-page-title">Dashboard</h1>
+<p class="bs-page-subtitle">Financial overview for your company</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-building"></i>
+        <h4>Welcome to BookSmarts</h4>
+        <p>Get started by creating an organization and company in <a href="settings/organization">Settings</a>.</p>
+    </div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="bs-card">
+                <div class="bs-card-label">Total Assets</div>
+                <div class="bs-card-value bs-cat-asset">@FormatAmount(totalAssets)</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="bs-card">
+                <div class="bs-card-label">Total Liabilities</div>
+                <div class="bs-card-value bs-cat-liability">@FormatAmount(totalLiabilities)</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="bs-card">
+                <div class="bs-card-label">Total Equity</div>
+                <div class="bs-card-value bs-cat-equity">@FormatAmount(totalEquity)</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="bs-card">
+                <div class="bs-card-label">Net Income</div>
+                <div class="bs-card-value @(netIncome >= 0 ? "bs-amount-positive" : "bs-amount-negative")">@FormatAmount(netIncome)</div>
+            </div>
+        </div>
+    </div>
+
+    @if (bankConnections.Count > 0)
+    {
+        <div class="row g-3 mb-4">
+            @foreach (var conn in bankConnections.Where(c => c.Status == BankConnectionStatus.Active))
+            {
+                @foreach (var acct in conn.Accounts.Where(a => a.IsEnabled && a.CurrentBalance.HasValue))
+                {
+                    <div class="col-md-3">
+                        <div class="bs-card">
+                            <div class="bs-card-label">@acct.Name (***@acct.Mask)</div>
+                            <div class="bs-card-value bs-cat-asset">@acct.CurrentBalance?.ToString("C2")</div>
+                            <div class="small text-muted">@conn.InstitutionName</div>
+                        </div>
+                    </div>
+                }
+            }
+            @if (uncategorizedCount > 0)
+            {
+                <div class="col-md-3">
+                    <div class="bs-card">
+                        <div class="bs-card-label">Uncategorized Transactions</div>
+                        <div class="bs-card-value" style="color: var(--bs-accent)">@uncategorizedCount</div>
+                        <a href="banking/transactions" class="small">Review & categorize <i class="fa-duotone fa-arrow-right"></i></a>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="row g-3">
+        <div class="col-md-6">
+            <div class="bs-card">
+                <h5>Recent Journal Entries</h5>
+                @if (recentEntries.Count == 0)
+                {
+                    <p class="text-muted small">No journal entries yet.</p>
+                }
+                else
+                {
+                    <table class="bs-table">
+                        <thead>
+                            <tr>
+                                <th>Number</th>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th class="bs-amount">Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in recentEntries.Take(5))
+                            {
+                                <tr>
+                                    <td><a href="journal-entries/@entry.id">@entry.EntryNumber</a></td>
+                                    <td>@entry.EntryDate.ToString("MM/dd/yy")</td>
+                                    <td>@(entry.Description ?? "—")</td>
+                                    <td class="bs-amount">@entry.TotalDebit.ToString("N2")</td>
+                                    <td><span class="bs-badge bs-badge-@entry.Status.ToString().ToLower()">@entry.Status</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="bs-card">
+                <h5>Quick Actions</h5>
+                <div class="d-flex flex-column gap-2 mt-3">
+                    <a href="journal-entries/new" class="btn btn-primary btn-sm">
+                        <i class="fa-duotone fa-plus me-1"></i> New Journal Entry
+                    </a>
+                    <a href="chart-of-accounts" class="btn btn-outline-secondary btn-sm">
+                        <i class="fa-duotone fa-list-tree me-1"></i> Chart of Accounts
+                    </a>
+                    <a href="trial-balance" class="btn btn-outline-secondary btn-sm">
+                        <i class="fa-duotone fa-scale-balanced me-1"></i> Trial Balance
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [CascadingParameter(Name = "CashBasis")] bool CashBasis { get; set; }
+
+    [Inject] AccountingService Accounting { get; set; } = default!;
+    [Inject] BankingService Banking { get; set; } = default!;
+
+    private List<JournalEntry> recentEntries = new();
+    private List<BankConnection> bankConnections = new();
+    private int uncategorizedCount;
+    private decimal totalAssets, totalLiabilities, totalEquity, netIncome;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+
+        try
+        {
+            recentEntries = await Accounting.GetJournalEntriesAsync(CompanyId);
+
+            var tb = await Accounting.GetTrialBalanceAsync(CompanyId, DateTime.UtcNow, CashBasis);
+            totalAssets = tb.Where(l => l.Category == AccountCategory.Asset).Sum(l => l.Debit - l.Credit);
+            totalLiabilities = tb.Where(l => l.Category == AccountCategory.Liability).Sum(l => l.Credit - l.Debit);
+            totalEquity = tb.Where(l => l.Category == AccountCategory.Equity).Sum(l => l.Credit - l.Debit);
+            var revenue = tb.Where(l => l.Category == AccountCategory.Revenue).Sum(l => l.Credit - l.Debit);
+            var expenses = tb.Where(l => l.Category == AccountCategory.Expense).Sum(l => l.Debit - l.Credit);
+            netIncome = revenue - expenses;
+
+            bankConnections = await Banking.GetConnectionsAsync(CompanyId);
+            uncategorizedCount = await Banking.GetUncategorizedCountAsync(CompanyId);
+        }
+        catch { /* Cosmos not configured */ }
+    }
+
+    private string FormatAmount(decimal amount)
+    {
+        return amount.ToString("C2");
+    }
+}

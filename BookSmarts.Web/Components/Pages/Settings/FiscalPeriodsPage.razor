@@ -1,0 +1,175 @@
+@page "/settings/fiscal-periods"
+
+<h1 class="bs-page-title">Fiscal Periods</h1>
+<p class="bs-page-subtitle">Manage fiscal years and periods for your company</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-calendar-days"></i>
+        <h4>No company selected</h4>
+        <p>Select a company from the header to manage fiscal periods.</p>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div></div>
+        <div class="bs-toolbar-actions">
+            <div class="input-group input-group-sm" style="width: auto;">
+                <input type="number" class="form-control" @bind="newYear" style="width: 100px;" />
+                <button class="btn btn-primary" @onclick="CreateFiscalYear" disabled="@saving">
+                    <i class="fa-duotone fa-plus me-1"></i> Create Fiscal Year
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @if (fiscalYears.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-calendar-days"></i>
+            <h4>No fiscal years</h4>
+            <p>Create a fiscal year to start managing periods.</p>
+        </div>
+    }
+
+    @foreach (var fy in fiscalYears)
+    {
+        <div class="bs-card mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h5 class="mb-0">@fy.Name</h5>
+                    <small class="text-muted">@fy.StartDate.ToString("MMM d, yyyy") — @fy.EndDate.ToString("MMM d, yyyy")</small>
+                </div>
+                @if (!fy.IsClosed)
+                {
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => CloseFiscalYear(fy)">Close Year</button>
+                }
+                else
+                {
+                    <span class="bs-badge bs-badge-voided">Closed</span>
+                }
+            </div>
+
+            <table class="bs-table bs-table-striped">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Period</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var period in fy.Periods)
+                    {
+                        <tr>
+                            <td>@period.PeriodNumber</td>
+                            <td>@period.Name</td>
+                            <td>@period.StartDate.ToString("MM/dd/yyyy")</td>
+                            <td>@period.EndDate.ToString("MM/dd/yyyy")</td>
+                            <td>
+                                <span class="bs-badge @GetPeriodBadgeClass(period.Status)">@period.Status</span>
+                            </td>
+                            <td>
+                                @if (period.Status == FiscalPeriodStatus.Open && !fy.IsClosed)
+                                {
+                                    <button class="btn btn-sm btn-outline-warning" @onclick="() => ClosePeriod(fy.id, period.PeriodId)">Close</button>
+                                }
+                                else if (period.Status == FiscalPeriodStatus.Closed && !fy.IsClosed)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => ReopenPeriod(fy.id, period.PeriodId)">Reopen</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] PeriodService PeriodSvc { get; set; } = default!;
+
+    private List<FiscalYear> fiscalYears = new();
+    private int newYear = DateTime.UtcNow.Year;
+    private bool saving;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            fiscalYears = await PeriodSvc.GetFiscalYearsAsync(CompanyId!);
+        }
+        catch { /* Cosmos not configured */ }
+    }
+
+    private async Task CreateFiscalYear()
+    {
+        error = null;
+        saving = true;
+        try
+        {
+            await PeriodSvc.CreateFiscalYearAsync(CompanyId!, newYear);
+            await LoadData();
+            newYear++;
+        }
+        catch (Exception ex) { error = ex.Message; }
+        saving = false;
+    }
+
+    private async Task ClosePeriod(string fyId, string periodId)
+    {
+        try
+        {
+            await PeriodSvc.ClosePeriodAsync(fyId, periodId, CompanyId!);
+            await LoadData();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task ReopenPeriod(string fyId, string periodId)
+    {
+        try
+        {
+            await PeriodSvc.ReopenPeriodAsync(fyId, periodId, CompanyId!);
+            await LoadData();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task CloseFiscalYear(FiscalYear fy)
+    {
+        try
+        {
+            await PeriodSvc.CloseFiscalYearAsync(fy.id, CompanyId!);
+            await LoadData();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private string GetPeriodBadgeClass(FiscalPeriodStatus status) => status switch
+    {
+        FiscalPeriodStatus.Open => "bs-badge-posted",
+        FiscalPeriodStatus.Closed => "bs-badge-draft",
+        FiscalPeriodStatus.Locked => "bs-badge-voided",
+        _ => ""
+    };
+}

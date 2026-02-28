@@ -1,0 +1,268 @@
+@page "/banking/connections"
+@inject IJSRuntime JS
+
+<h1 class="bs-page-title">Bank Connections</h1>
+<p class="bs-page-subtitle">Connect and manage your bank accounts</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-building-columns"></i>
+        <h4>No Company Selected</h4>
+        <p>Select a company to manage bank connections.</p>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div></div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-primary btn-sm" @onclick="ConnectBank" disabled="@connecting">
+                @if (connecting)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="fa-duotone fa-plus me-1"></i> Connect a Bank
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @if (connections.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-building-columns"></i>
+            <h4>No Bank Connections</h4>
+            <p>Connect a bank account to start importing transactions automatically.</p>
+        </div>
+    }
+    else
+    {
+        <div class="row g-3">
+            @foreach (var conn in connections)
+            {
+                <div class="col-md-6">
+                    <div class="bs-card">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <h5 class="mb-1">
+                                    <i class="fa-duotone fa-building-columns me-1"></i>
+                                    @conn.InstitutionName
+                                </h5>
+                                <span class="bs-badge bs-badge-@conn.Status.ToString().ToLower()">@conn.Status</span>
+                            </div>
+                            <div class="bs-toolbar-actions">
+                                @if (conn.Status == BankConnectionStatus.Active)
+                                {
+                                    <button class="btn btn-outline-primary btn-sm" @onclick="() => SyncNow(conn)" disabled="@syncingIds.Contains(conn.id)">
+                                        @if (syncingIds.Contains(conn.id))
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                        }
+                                        <i class="fa-duotone fa-arrows-rotate me-1"></i> Sync Now
+                                    </button>
+                                }
+                                <button class="btn btn-outline-danger btn-sm" @onclick="() => Disconnect(conn)">
+                                    <i class="fa-duotone fa-link-slash me-1"></i> Disconnect
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (conn.Status == BankConnectionStatus.Error && !string.IsNullOrEmpty(conn.ErrorMessage))
+                        {
+                            <div class="alert alert-danger small mb-3">@conn.ErrorCode: @conn.ErrorMessage</div>
+                        }
+
+                        <div class="small text-muted mb-2">
+                            Last synced: @(conn.LastSyncUtc?.ToString("g") ?? "Never")
+                        </div>
+
+                        <!-- Account mapping table -->
+                        @if (conn.Accounts.Count > 0)
+                        {
+                            <table class="bs-table">
+                                <thead>
+                                    <tr>
+                                        <th>Bank Account</th>
+                                        <th>Type</th>
+                                        <th>Balance</th>
+                                        <th>Mapped To</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var acct in conn.Accounts)
+                                    {
+                                        <tr>
+                                            <td>
+                                                @acct.Name
+                                                @if (!string.IsNullOrEmpty(acct.Mask))
+                                                {
+                                                    <span class="text-muted">(***@acct.Mask)</span>
+                                                }
+                                            </td>
+                                            <td>@acct.PlaidType @(!string.IsNullOrEmpty(acct.PlaidSubType) ? $"/ {acct.PlaidSubType}" : "")</td>
+                                            <td class="bs-amount">@(acct.CurrentBalance?.ToString("N2") ?? "—")</td>
+                                            <td>
+                                                <select class="form-select form-select-sm" style="min-width: 200px"
+                                                    value="@(acct.MappedCoaAccountId ?? "")"
+                                                    @onchange="(e) => OnAccountMapped(conn, acct, e)">
+                                                    <option value="">— Select COA Account —</option>
+                                                    @foreach (var coa in coaAccounts.Where(a => a.IsActive))
+                                                    {
+                                                        <option value="@coa.id">@coa.AccountNumber — @coa.Name</option>
+                                                    }
+                                                </select>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [CascadingParameter(Name = "AccountId")] string? AccountId { get; set; }
+
+    [Inject] BankingService Banking { get; set; } = default!;
+    [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
+
+    private List<BankConnection> connections = new();
+    private List<ChartOfAccountEntry> coaAccounts = new();
+    private HashSet<string> syncingIds = new();
+    private string? error;
+    private bool connecting;
+    private DotNetObjectReference<BankConnectionsPage>? dotNetRef;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            connections = await Banking.GetConnectionsAsync(CompanyId!);
+            coaAccounts = await CoaService.GetChartOfAccountsAsync(CompanyId!);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task ConnectBank()
+    {
+        error = null;
+        connecting = true;
+        try
+        {
+            var linkToken = await Banking.CreateLinkTokenAsync(CompanyId!, AccountId ?? "user");
+            dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("booksmarts.openPlaidLink", linkToken, dotNetRef);
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to connect: {ex.Message}";
+            connecting = false;
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnPlaidSuccess(string publicToken, string institutionId, string institutionName)
+    {
+        try
+        {
+            await Banking.ExchangePublicTokenAsync(CompanyId!, publicToken, institutionId, institutionName);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to link account: {ex.Message}";
+        }
+        finally
+        {
+            connecting = false;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public Task OnPlaidExit()
+    {
+        connecting = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task SyncNow(BankConnection conn)
+    {
+        error = null;
+        syncingIds.Add(conn.id);
+        StateHasChanged();
+        try
+        {
+            await Banking.SyncTransactionsAsync(conn.id, CompanyId!);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            error = $"Sync failed: {ex.Message}";
+        }
+        finally
+        {
+            syncingIds.Remove(conn.id);
+        }
+    }
+
+    private async Task Disconnect(BankConnection conn)
+    {
+        error = null;
+        try
+        {
+            await Banking.DisconnectAsync(conn.id, CompanyId!);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            error = $"Disconnect failed: {ex.Message}";
+        }
+    }
+
+    private async Task OnAccountMapped(BankConnection conn, BankAccount acct, ChangeEventArgs e)
+    {
+        var selectedId = e.Value?.ToString() ?? "";
+        if (string.IsNullOrEmpty(selectedId))
+            return;
+
+        var coaAccount = coaAccounts.FirstOrDefault(a => a.id == selectedId);
+        if (coaAccount == null) return;
+
+        try
+        {
+            await Banking.MapAccountAsync(conn.id, CompanyId!, acct.PlaidAccountId,
+                coaAccount.id, coaAccount.AccountNumber, coaAccount.Name);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to map account: {ex.Message}";
+        }
+    }
+
+    public void Dispose()
+    {
+        dotNetRef?.Dispose();
+    }
+}
