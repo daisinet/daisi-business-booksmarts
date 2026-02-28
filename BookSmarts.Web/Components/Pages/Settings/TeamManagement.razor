@@ -1,0 +1,463 @@
+@page "/settings/team"
+@using BookSmarts.Core.Enums
+@using BookSmarts.Core.Models
+@using BookSmarts.Services
+@using Daisi.SDK.Clients.V1.Orc
+@using Daisi.SDK.Models
+@using Daisi.Protos.V1
+
+<h4><i class="fa-duotone fa-users-gear me-2"></i>Team Management</h4>
+<p class="text-muted small mb-4">Manage who has access to your BookSmarts workspace and what they can do.</p>
+
+@if (!isOwner)
+{
+    <div class="alert alert-warning">Only account Owners can manage team members.</div>
+    return;
+}
+
+<!-- Import from Daisinet -->
+@if (showImport)
+{
+    <div class="bs-card mb-4">
+        <h5>Import Users from Daisinet</h5>
+        <p class="text-muted small mb-3">Select users from your Daisinet account to grant BookSmarts access.</p>
+
+        @if (importLoading)
+        {
+            <div class="text-center py-3">
+                <span class="spinner-border spinner-border-sm me-1"></span> Loading Daisinet users...
+            </div>
+        }
+        else if (daisinetUsers.Count == 0)
+        {
+            <p class="text-muted small">No additional Daisinet users found to import.</p>
+        }
+        else
+        {
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th style="width:40px;"></th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Daisinet Role</th>
+                        <th>BookSmarts Role</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var du in daisinetUsers)
+                    {
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="form-check-input" @bind="du.Selected" />
+                            </td>
+                            <td>@du.Name</td>
+                            <td>@du.Email</td>
+                            <td><span class="badge bg-secondary">@du.DaisinetRole</span></td>
+                            <td>
+                                <select class="form-select form-select-sm" style="width:150px;" @bind="du.AssignedRole">
+                                    @foreach (var role in Enum.GetValues<BookSmartsRole>().Where(r => r != BookSmartsRole.Owner))
+                                    {
+                                        <option value="@role">@role</option>
+                                    }
+                                </select>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (!string.IsNullOrEmpty(importError))
+            {
+                <div class="alert alert-danger small">@importError</div>
+            }
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary btn-sm" @onclick="ImportSelected" disabled="@importProcessing">
+                    @if (importProcessing)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Import Selected
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="() => showImport = false">Cancel</button>
+            </div>
+        }
+    </div>
+}
+
+<!-- User List -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">Team Members</h5>
+    <button class="btn btn-outline-primary btn-sm" @onclick="ShowImport">
+        <i class="fa-duotone fa-user-plus me-1"></i> Import from Daisinet
+    </button>
+</div>
+
+@if (loading)
+{
+    <div class="text-center py-4">
+        <span class="spinner-border spinner-border-sm me-1"></span> Loading...
+    </div>
+}
+else if (users.Count == 0)
+{
+    <div class="text-muted">No team members found.</div>
+}
+else
+{
+    <table class="table table-sm table-hover">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Companies</th>
+                <th>Status</th>
+                <th style="width:100px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var user in users)
+            {
+                <tr class="@(!user.IsActive ? "text-muted" : "")">
+                    <td>@user.Name</td>
+                    <td>@user.Email</td>
+                    <td><span class="badge @GetRoleBadgeClass(user.Role)">@user.Role</span></td>
+                    <td>
+                        @if (user.Role == BookSmartsRole.Owner && user.CompanyIds.Count == 0)
+                        {
+                            <span class="text-muted small">All</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted small">@user.CompanyIds.Count</span>
+                        }
+                    </td>
+                    <td>
+                        @if (user.IsActive)
+                        {
+                            <span class="badge bg-success">Active</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactive</span>
+                        }
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(user)">
+                            <i class="fa-duotone fa-pen-to-square"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<!-- Edit User Modal -->
+@if (editUser != null)
+{
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit User — @editUser.Name</h5>
+                    <button type="button" class="btn-close" @onclick="CancelEdit"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Role</label>
+                        <select class="form-select" @bind="editRole">
+                            @foreach (var role in Enum.GetValues<BookSmartsRole>())
+                            {
+                                <option value="@role">@role</option>
+                            }
+                        </select>
+                    </div>
+
+                    @if (editRole != BookSmartsRole.Owner)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Company Access</label>
+                            @foreach (var company in allCompanies)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox"
+                                           checked="@editCompanyIds.Contains(company.id)"
+                                           @onchange="(e) => ToggleCompany(company.id, (bool)(e.Value ?? false))" />
+                                    <label class="form-check-label">@company.Name</label>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted small">Owners have access to all companies by default.</p>
+                    }
+
+                    @if (!string.IsNullOrEmpty(editError))
+                    {
+                        <div class="alert alert-danger small">@editError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    @if (editUser.IsActive)
+                    {
+                        <button class="btn btn-outline-danger btn-sm me-auto" @onclick="DeactivateUser" disabled="@editProcessing">
+                            Deactivate
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-outline-success btn-sm me-auto" @onclick="ReactivateUser" disabled="@editProcessing">
+                            Reactivate
+                        </button>
+                    }
+                    <button class="btn btn-outline-secondary" @onclick="CancelEdit">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveEdit" disabled="@editProcessing">
+                        @if (editProcessing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "AccountId")] string AccountId { get; set; } = "";
+    [CascadingParameter(Name = "CurrentUser")] BookSmartsUser? CurrentUser { get; set; }
+
+    [Inject] UserManagementService UserService { get; set; } = default!;
+    [Inject] OrganizationService OrgService { get; set; } = default!;
+    [Inject] AccountClientFactory AccountClientFactory { get; set; } = default!;
+
+    private bool isOwner;
+    private bool loading = true;
+    private List<BookSmartsUser> users = new();
+    private List<Company> allCompanies = new();
+
+    // Import state
+    private bool showImport;
+    private bool importLoading;
+    private bool importProcessing;
+    private string? importError;
+    private List<DaisinetUserImport> daisinetUsers = new();
+
+    // Edit state
+    private BookSmartsUser? editUser;
+    private BookSmartsRole editRole;
+    private List<string> editCompanyIds = new();
+    private bool editProcessing;
+    private string? editError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        isOwner = CurrentUser?.Role == BookSmartsRole.Owner;
+        if (!isOwner) return;
+
+        loading = true;
+        try
+        {
+            users = await UserService.GetUsersAsync(AccountId);
+            allCompanies = await OrgService.GetCompaniesAsync(AccountId);
+        }
+        catch { }
+        loading = false;
+    }
+
+    // ── Import ──
+
+    private async Task ShowImport()
+    {
+        showImport = true;
+        importLoading = true;
+        importError = null;
+        daisinetUsers.Clear();
+
+        try
+        {
+            var client = AccountClientFactory.Create();
+            var response = await client.GetUsersAsync(new GetUsersRequest
+            {
+                Paging = new PagingInfo { PageIndex = 0, PageSize = 100 }
+            });
+
+            var existingDaisinetIds = users.Select(u => u.DaisinetUserId).ToHashSet();
+
+            foreach (var u in response.Users)
+            {
+                if (!existingDaisinetIds.Contains(u.Id))
+                {
+                    daisinetUsers.Add(new DaisinetUserImport
+                    {
+                        DaisinetUserId = u.Id,
+                        Name = u.Name,
+                        Email = u.EmailAddress,
+                        DaisinetRole = u.Role.ToString().Replace("UserRoles", ""),
+                        AssignedRole = BookSmartsRole.Viewer
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            importError = $"Could not load Daisinet users: {ex.Message}";
+        }
+
+        importLoading = false;
+    }
+
+    private async Task ImportSelected()
+    {
+        var selected = daisinetUsers.Where(u => u.Selected).ToList();
+        if (selected.Count == 0)
+        {
+            importError = "Select at least one user to import.";
+            return;
+        }
+
+        importProcessing = true;
+        importError = null;
+
+        try
+        {
+            foreach (var du in selected)
+            {
+                var newUser = new BookSmartsUser
+                {
+                    AccountId = AccountId,
+                    DaisinetUserId = du.DaisinetUserId,
+                    Name = du.Name,
+                    Email = du.Email,
+                    Role = du.AssignedRole,
+                    IsActive = true
+                };
+
+                await UserService.CreateUserAsync(newUser);
+            }
+
+            // Refresh
+            users = await UserService.GetUsersAsync(AccountId);
+            showImport = false;
+        }
+        catch (Exception ex)
+        {
+            importError = $"Import failed: {ex.Message}";
+        }
+
+        importProcessing = false;
+    }
+
+    // ── Edit ──
+
+    private void StartEdit(BookSmartsUser user)
+    {
+        editUser = user;
+        editRole = user.Role;
+        editCompanyIds = new List<string>(user.CompanyIds);
+        editError = null;
+    }
+
+    private void CancelEdit()
+    {
+        editUser = null;
+    }
+
+    private void ToggleCompany(string companyId, bool isChecked)
+    {
+        if (isChecked && !editCompanyIds.Contains(companyId))
+            editCompanyIds.Add(companyId);
+        else if (!isChecked)
+            editCompanyIds.Remove(companyId);
+    }
+
+    private async Task SaveEdit()
+    {
+        if (editUser == null) return;
+
+        editProcessing = true;
+        editError = null;
+
+        try
+        {
+            editUser.Role = editRole;
+            editUser.CompanyIds = editRole == BookSmartsRole.Owner ? new List<string>() : editCompanyIds;
+
+            await UserService.UpdateUserAsync(editUser);
+            users = await UserService.GetUsersAsync(AccountId);
+            editUser = null;
+        }
+        catch (Exception ex)
+        {
+            editError = ex.Message;
+        }
+
+        editProcessing = false;
+    }
+
+    private async Task DeactivateUser()
+    {
+        if (editUser == null) return;
+
+        editProcessing = true;
+        editError = null;
+
+        try
+        {
+            await UserService.DeactivateUserAsync(editUser.id, AccountId);
+            users = await UserService.GetUsersAsync(AccountId);
+            editUser = null;
+        }
+        catch (Exception ex)
+        {
+            editError = ex.Message;
+        }
+
+        editProcessing = false;
+    }
+
+    private async Task ReactivateUser()
+    {
+        if (editUser == null) return;
+
+        editProcessing = true;
+        editError = null;
+
+        try
+        {
+            await UserService.ReactivateUserAsync(editUser.id, AccountId);
+            users = await UserService.GetUsersAsync(AccountId);
+            editUser = null;
+        }
+        catch (Exception ex)
+        {
+            editError = ex.Message;
+        }
+
+        editProcessing = false;
+    }
+
+    private string GetRoleBadgeClass(BookSmartsRole role) => role switch
+    {
+        BookSmartsRole.Owner => "bg-primary",
+        BookSmartsRole.Accountant => "bg-info",
+        BookSmartsRole.Bookkeeper => "bg-warning text-dark",
+        BookSmartsRole.Viewer => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    private class DaisinetUserImport
+    {
+        public string DaisinetUserId { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string DaisinetRole { get; set; } = "";
+        public BookSmartsRole AssignedRole { get; set; } = BookSmartsRole.Viewer;
+        public bool Selected { get; set; }
+    }
+}

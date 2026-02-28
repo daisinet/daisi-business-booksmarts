@@ -1,4 +1,13 @@
 @page "/settings/divisions"
+@using BookSmarts.Core.Enums
+@using BookSmarts.Core.Models
+@using BookSmarts.Services
+
+@if (CurrentUser != null && !PermissionService.CanManageOrganization(CurrentUser.Role))
+{
+    <div class="alert alert-warning">Only account Owners can manage divisions.</div>
+    return;
+}
 
 <h1 class="bs-page-title">Divisions</h1>
 <p class="bs-page-subtitle">Manage divisions within your organization</p>
@@ -85,6 +94,7 @@ else
 
 @code {
     [CascadingParameter(Name = "AccountId")] string AccountId { get; set; } = "";
+    [CascadingParameter(Name = "CurrentUser")] BookSmartsUser? CurrentUser { get; set; }
     [Inject] OrganizationService OrgService { get; set; } = default!;
 
     private List<Division> divisions = new();

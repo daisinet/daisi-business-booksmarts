@@ -1,5 +1,13 @@
 @page "/settings/organization"
 @using BookSmarts.Services
+@using BookSmarts.Core.Enums
+@using BookSmarts.Core.Models
+
+@if (CurrentUser != null && !PermissionService.CanManageOrganization(CurrentUser.Role))
+{
+    <div class="alert alert-warning">Only account Owners can manage organization settings.</div>
+    return;
+}
 
 <h1 class="bs-page-title">Organization Setup</h1>
 <p class="bs-page-subtitle">Manage your organization settings</p>
@@ -161,6 +169,7 @@ else
 
 @code {
     [CascadingParameter(Name = "AccountId")] string AccountId { get; set; } = "";
+    [CascadingParameter(Name = "CurrentUser")] BookSmartsUser? CurrentUser { get; set; }
     [Inject] OrganizationService OrgService { get; set; } = default!;
     [Inject] EncryptionSetupService EncryptionSetup { get; set; } = default!;
     [Inject] EncryptionMigrationService MigrationService { get; set; } = default!;

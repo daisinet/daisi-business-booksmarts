@@ -26,6 +26,7 @@ public static class EncryptionFieldMaps
         [typeof(Payment)] = ["CustomerName", "VendorName", "Allocations", "Notes", "Amount"],
         [typeof(Budget)] = ["Name", "Description", "LineItems"],
         [typeof(InterCompanyTransaction)] = ["Description", "SourceCompanyName", "TargetCompanyName"],
+        [typeof(BookSmartsUser)] = ["Name", "Email"],
     };
 
     /// <summary>

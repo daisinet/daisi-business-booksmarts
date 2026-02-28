@@ -4,8 +4,15 @@
 @using Daisi.SDK.Web.Services
 @using Daisi.SDK.Models
 @using BookSmarts.Web.Components.Pages.Security
+@using BookSmarts.Core.Enums
+@using BookSmarts.Core.Models
+@using System.Security.Claims
 
-@if (isAuthenticated && showPinEntry)
+@if (isAuthenticated && showAccessDenied)
+{
+    <AccessDenied />
+}
+else if (isAuthenticated && showPinEntry)
 {
     <!-- PIN entry overlay — shown when encryption is enabled but not yet unlocked -->
     @if (showRecovery)
@@ -41,60 +48,69 @@ else if (isAuthenticated)
                 @if (!sidebarCollapsed) { <span>Dashboard</span> }
             </NavLink>
 
-            @if (!sidebarCollapsed) { <div class="bs-nav-section">Transactions</div> }
-            <NavLink class="bs-nav-item" href="journal-entries">
-                <i class="fa-duotone fa-pen-to-square"></i>
-                @if (!sidebarCollapsed) { <span>Journal Entries</span> }
-            </NavLink>
+            @if (PermissionService.CanWriteJournals(userRole))
+            {
+                @if (!sidebarCollapsed) { <div class="bs-nav-section">Transactions</div> }
+                <NavLink class="bs-nav-item" href="journal-entries">
+                    <i class="fa-duotone fa-pen-to-square"></i>
+                    @if (!sidebarCollapsed) { <span>Journal Entries</span> }
+                </NavLink>
+            }
 
-            @if (!sidebarCollapsed) { <div class="bs-nav-section">Banking</div> }
-            <NavLink class="bs-nav-item" href="banking/connections">
-                <i class="fa-duotone fa-building-columns"></i>
-                @if (!sidebarCollapsed) { <span>Bank Connections</span> }
-            </NavLink>
-            <NavLink class="bs-nav-item" href="banking/transactions">
-                <i class="fa-duotone fa-money-bill-transfer"></i>
-                @if (!sidebarCollapsed)
-                {
-                    <span>Bank Transactions</span>
-                    @if (uncategorizedCount > 0)
+            @if (PermissionService.CanWriteBanking(userRole))
+            {
+                @if (!sidebarCollapsed) { <div class="bs-nav-section">Banking</div> }
+                <NavLink class="bs-nav-item" href="banking/connections">
+                    <i class="fa-duotone fa-building-columns"></i>
+                    @if (!sidebarCollapsed) { <span>Bank Connections</span> }
+                </NavLink>
+                <NavLink class="bs-nav-item" href="banking/transactions">
+                    <i class="fa-duotone fa-money-bill-transfer"></i>
+                    @if (!sidebarCollapsed)
                     {
-                        <span class="bs-nav-badge">@uncategorizedCount</span>
+                        <span>Bank Transactions</span>
+                        @if (uncategorizedCount > 0)
+                        {
+                            <span class="bs-nav-badge">@uncategorizedCount</span>
+                        }
                     }
-                }
-            </NavLink>
-            <NavLink class="bs-nav-item" href="banking/rules">
-                <i class="fa-duotone fa-sparkles"></i>
-                @if (!sidebarCollapsed) { <span>Auto-Categorization</span> }
-            </NavLink>
+                </NavLink>
+                <NavLink class="bs-nav-item" href="banking/rules">
+                    <i class="fa-duotone fa-sparkles"></i>
+                    @if (!sidebarCollapsed) { <span>Auto-Categorization</span> }
+                </NavLink>
+            }
 
-            @if (!sidebarCollapsed) { <div class="bs-nav-section">Receivables</div> }
-            <NavLink class="bs-nav-item" href="customers">
-                <i class="fa-duotone fa-users"></i>
-                @if (!sidebarCollapsed) { <span>Customers</span> }
-            </NavLink>
-            <NavLink class="bs-nav-item" href="invoices">
-                <i class="fa-duotone fa-file-invoice"></i>
-                @if (!sidebarCollapsed) { <span>Invoices</span> }
-            </NavLink>
-            <NavLink class="bs-nav-item" href="payments/receive">
-                <i class="fa-duotone fa-hand-holding-dollar"></i>
-                @if (!sidebarCollapsed) { <span>Receive Payment</span> }
-            </NavLink>
+            @if (PermissionService.CanWriteInvoicesAndBills(userRole))
+            {
+                @if (!sidebarCollapsed) { <div class="bs-nav-section">Receivables</div> }
+                <NavLink class="bs-nav-item" href="customers">
+                    <i class="fa-duotone fa-users"></i>
+                    @if (!sidebarCollapsed) { <span>Customers</span> }
+                </NavLink>
+                <NavLink class="bs-nav-item" href="invoices">
+                    <i class="fa-duotone fa-file-invoice"></i>
+                    @if (!sidebarCollapsed) { <span>Invoices</span> }
+                </NavLink>
+                <NavLink class="bs-nav-item" href="payments/receive">
+                    <i class="fa-duotone fa-hand-holding-dollar"></i>
+                    @if (!sidebarCollapsed) { <span>Receive Payment</span> }
+                </NavLink>
 
-            @if (!sidebarCollapsed) { <div class="bs-nav-section">Payables</div> }
-            <NavLink class="bs-nav-item" href="vendors">
-                <i class="fa-duotone fa-truck"></i>
-                @if (!sidebarCollapsed) { <span>Vendors</span> }
-            </NavLink>
-            <NavLink class="bs-nav-item" href="bills">
-                <i class="fa-duotone fa-file-invoice-dollar"></i>
-                @if (!sidebarCollapsed) { <span>Bills</span> }
-            </NavLink>
-            <NavLink class="bs-nav-item" href="payments/make">
-                <i class="fa-duotone fa-money-check-dollar"></i>
-                @if (!sidebarCollapsed) { <span>Make Payment</span> }
-            </NavLink>
+                @if (!sidebarCollapsed) { <div class="bs-nav-section">Payables</div> }
+                <NavLink class="bs-nav-item" href="vendors">
+                    <i class="fa-duotone fa-truck"></i>
+                    @if (!sidebarCollapsed) { <span>Vendors</span> }
+                </NavLink>
+                <NavLink class="bs-nav-item" href="bills">
+                    <i class="fa-duotone fa-file-invoice-dollar"></i>
+                    @if (!sidebarCollapsed) { <span>Bills</span> }
+                </NavLink>
+                <NavLink class="bs-nav-item" href="payments/make">
+                    <i class="fa-duotone fa-money-check-dollar"></i>
+                    @if (!sidebarCollapsed) { <span>Make Payment</span> }
+                </NavLink>
+            }
 
             @if (!sidebarCollapsed) { <div class="bs-nav-section">Accounting</div> }
             <NavLink class="bs-nav-item" href="chart-of-accounts">
@@ -102,11 +118,14 @@ else if (isAuthenticated)
                 @if (!sidebarCollapsed) { <span>Chart of Accounts</span> }
             </NavLink>
 
-            @if (!sidebarCollapsed) { <div class="bs-nav-section">Budgeting</div> }
-            <NavLink class="bs-nav-item" href="budgets">
-                <i class="fa-duotone fa-calculator"></i>
-                @if (!sidebarCollapsed) { <span>Budgets</span> }
-            </NavLink>
+            @if (PermissionService.CanWriteBudgets(userRole))
+            {
+                @if (!sidebarCollapsed) { <div class="bs-nav-section">Budgeting</div> }
+                <NavLink class="bs-nav-item" href="budgets">
+                    <i class="fa-duotone fa-calculator"></i>
+                    @if (!sidebarCollapsed) { <span>Budgets</span> }
+                </NavLink>
+            }
 
             @if (companies.Count >= 2)
             {
@@ -117,19 +136,22 @@ else if (isAuthenticated)
                 </NavLink>
             }
 
-            @if (!sidebarCollapsed) { <div class="bs-nav-section">AI Advisor</div> }
-            <NavLink class="bs-nav-item" href="ai/chat">
-                <i class="fa-duotone fa-comments"></i>
-                @if (!sidebarCollapsed) { <span>Business Coach</span> }
-            </NavLink>
-            <NavLink class="bs-nav-item" href="ai/projections">
-                <i class="fa-duotone fa-chart-line-up"></i>
-                @if (!sidebarCollapsed) { <span>Projections</span> }
-            </NavLink>
-            <NavLink class="bs-nav-item" href="ai/cash-forecast">
-                <i class="fa-duotone fa-crystal-ball"></i>
-                @if (!sidebarCollapsed) { <span>Cash Forecast</span> }
-            </NavLink>
+            @if (PermissionService.CanUseAiFeatures(userRole))
+            {
+                @if (!sidebarCollapsed) { <div class="bs-nav-section">AI Advisor</div> }
+                <NavLink class="bs-nav-item" href="ai/chat">
+                    <i class="fa-duotone fa-comments"></i>
+                    @if (!sidebarCollapsed) { <span>Business Coach</span> }
+                </NavLink>
+                <NavLink class="bs-nav-item" href="ai/projections">
+                    <i class="fa-duotone fa-chart-line-up"></i>
+                    @if (!sidebarCollapsed) { <span>Projections</span> }
+                </NavLink>
+                <NavLink class="bs-nav-item" href="ai/cash-forecast">
+                    <i class="fa-duotone fa-crystal-ball"></i>
+                    @if (!sidebarCollapsed) { <span>Cash Forecast</span> }
+                </NavLink>
+            }
 
             @if (!sidebarCollapsed) { <div class="bs-nav-section">Reports</div> }
             <NavLink class="bs-nav-item" href="trial-balance">
@@ -183,21 +205,31 @@ else if (isAuthenticated)
             }
 
             @if (!sidebarCollapsed) { <div class="bs-nav-section">Settings</div> }
-            <NavLink class="bs-nav-item" href="settings/organization">
-                <i class="fa-duotone fa-building"></i>
-                @if (!sidebarCollapsed) { <span>Organization</span> }
-            </NavLink>
-            @if (divisionsEnabled)
+            @if (PermissionService.CanManageUsers(userRole))
             {
-                <NavLink class="bs-nav-item" href="settings/divisions">
-                    <i class="fa-duotone fa-sitemap"></i>
-                    @if (!sidebarCollapsed) { <span>Divisions</span> }
+                <NavLink class="bs-nav-item" href="settings/team">
+                    <i class="fa-duotone fa-users-gear"></i>
+                    @if (!sidebarCollapsed) { <span>Team</span> }
                 </NavLink>
             }
-            <NavLink class="bs-nav-item" href="settings/companies">
-                <i class="fa-duotone fa-buildings"></i>
-                @if (!sidebarCollapsed) { <span>Companies</span> }
-            </NavLink>
+            @if (PermissionService.CanManageOrganization(userRole))
+            {
+                <NavLink class="bs-nav-item" href="settings/organization">
+                    <i class="fa-duotone fa-building"></i>
+                    @if (!sidebarCollapsed) { <span>Organization</span> }
+                </NavLink>
+                @if (divisionsEnabled)
+                {
+                    <NavLink class="bs-nav-item" href="settings/divisions">
+                        <i class="fa-duotone fa-sitemap"></i>
+                        @if (!sidebarCollapsed) { <span>Divisions</span> }
+                    </NavLink>
+                }
+                <NavLink class="bs-nav-item" href="settings/companies">
+                    <i class="fa-duotone fa-buildings"></i>
+                    @if (!sidebarCollapsed) { <span>Companies</span> }
+                </NavLink>
+            }
             <NavLink class="bs-nav-item" href="settings/fiscal-periods">
                 <i class="fa-duotone fa-calendar-days"></i>
                 @if (!sidebarCollapsed) { <span>Fiscal Periods</span> }
@@ -245,6 +277,11 @@ else if (isAuthenticated)
                         <i class="fa-duotone fa-user me-1"></i> @userName
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
+                        @if (currentUser != null)
+                        {
+                            <li><span class="dropdown-item-text text-muted small">@currentUser.Role</span></li>
+                            <li><hr class="dropdown-divider" /></li>
+                        }
                         <li><a class="dropdown-item" href="#" @onclick:preventDefault @onclick="Logout">Logout</a></li>
                     </ul>
                 </div>
@@ -253,11 +290,13 @@ else if (isAuthenticated)
 
         <!-- Page content -->
         <main class="bs-content">
-            <CascadingValue Value="selectedCompanyId" Name="CompanyId">
-                <CascadingValue Value="accountId" Name="AccountId">
-                    <CascadingValue Value="cashBasis" Name="CashBasis">
-                        <CascadingValue Value="RefreshCompanies" Name="RefreshCompanies">
-                            @Body
+            <CascadingValue Value="currentUser" Name="CurrentUser">
+                <CascadingValue Value="selectedCompanyId" Name="CompanyId">
+                    <CascadingValue Value="accountId" Name="AccountId">
+                        <CascadingValue Value="cashBasis" Name="CashBasis">
+                            <CascadingValue Value="RefreshCompanies" Name="RefreshCompanies">
+                                @Body
+                            </CascadingValue>
                         </CascadingValue>
                     </CascadingValue>
                 </CascadingValue>
@@ -286,10 +325,14 @@ else if (isAuthenticated)
     private string selectedCompanyId = "";
     private string accountId = "";
     private string userName = "";
+    private string daisinetUserId = "";
     private int uncategorizedCount;
     private List<Company> companies = new();
+    private BookSmartsUser? currentUser;
+    private BookSmartsRole userRole = BookSmartsRole.Viewer;
 
-    // Encryption state
+    // Auth state
+    private bool showAccessDenied;
     private bool showPinEntry;
     private bool showRecovery;
 
@@ -298,6 +341,9 @@ else if (isAuthenticated)
     [Inject] BankingService Banking { get; set; } = default!;
     [Inject] EncryptionSetupService EncryptionSetup { get; set; } = default!;
     [Inject] EncryptionContext EncryptionCtx { get; set; } = default!;
+    [Inject] UserManagementService UserService { get; set; } = default!;
+    [Inject] UserContext UserCtx { get; set; } = default!;
+    [Inject] IHttpContextAccessor HttpContextAccessor { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -306,27 +352,21 @@ else if (isAuthenticated)
             isAuthenticated = await Auth.IsAuthenticatedAsync();
             if (!isAuthenticated)
             {
-                var appUrl = DaisiStaticSettings.SsoAppUrl;
-                var authorityUrl = DaisiStaticSettings.SsoAuthorityUrl;
-                var callbackUrl = Uri.EscapeDataString($"{appUrl}/sso/callback");
-                var origin = Uri.EscapeDataString(appUrl ?? "");
-                Nav.NavigateTo(
-                    $"{authorityUrl}/sso/authorize?returnUrl={callbackUrl}&origin={origin}", true);
+                RedirectToSso();
                 return;
             }
 
             userName = await Auth.GetUserNameAsync() ?? "";
             accountId = await Auth.GetAccountIdAsync() ?? "";
+
+            // Extract DaisinetUserId from ClaimTypes.Sid (set by AuthService during validation)
+            daisinetUserId = HttpContextAccessor.HttpContext?.User?.Claims
+                .FirstOrDefault(c => c.Type == ClaimTypes.Sid)?.Value ?? "";
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Auth error: {ex.Message}");
-            var appUrl = DaisiStaticSettings.SsoAppUrl;
-            var authorityUrl = DaisiStaticSettings.SsoAuthorityUrl;
-            var callbackUrl = Uri.EscapeDataString($"{appUrl}/sso/callback");
-            var origin = Uri.EscapeDataString(appUrl ?? "");
-            Nav.NavigateTo(
-                $"{authorityUrl}/sso/authorize?returnUrl={callbackUrl}&origin={origin}", true);
+            RedirectToSso();
         }
     }
 
@@ -352,22 +392,95 @@ else if (isAuthenticated)
             }
             catch { /* Cosmos not configured yet */ }
 
-            // Load org settings and companies for this account
-            try
+            // Resolve BookSmarts user
+            await ResolveCurrentUser();
+            if (showAccessDenied)
             {
-                var orgs = await OrgService.GetOrganizationsAsync(accountId);
-                var org = orgs.FirstOrDefault();
-                divisionsEnabled = org?.DivisionsEnabled ?? false;
-
-                companies = await OrgService.GetCompaniesAsync(accountId);
-                if (companies.Count > 0 && string.IsNullOrEmpty(selectedCompanyId))
-                    selectedCompanyId = companies[0].id;
+                StateHasChanged();
+                return;
             }
-            catch { /* Cosmos not configured yet */ }
+
+            // Load org settings and companies for this account
+            await LoadOrgAndCompanies();
 
             await LoadUncategorizedCount();
             StateHasChanged();
         }
+    }
+
+    private async Task ResolveCurrentUser()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(daisinetUserId))
+            {
+                showAccessDenied = true;
+                return;
+            }
+
+            // Look up existing BookSmartsUser by DaisinetUserId
+            currentUser = await UserService.GetUserByDaisinetIdAsync(daisinetUserId, accountId);
+
+            if (currentUser == null)
+            {
+                // Check if any users exist for this account
+                var existingUsers = await UserService.GetUsersAsync(accountId);
+                if (existingUsers.Count == 0)
+                {
+                    // First user — auto-provision as Owner
+                    currentUser = await UserService.CreateUserAsync(new BookSmartsUser
+                    {
+                        AccountId = accountId,
+                        DaisinetUserId = daisinetUserId,
+                        Name = userName,
+                        Email = "",
+                        Role = BookSmartsRole.Owner,
+                        IsActive = true
+                    });
+                }
+                else
+                {
+                    // Not the first user and no record — Access Denied
+                    showAccessDenied = true;
+                    return;
+                }
+            }
+            else if (!currentUser.IsActive)
+            {
+                showAccessDenied = true;
+                return;
+            }
+
+            userRole = currentUser.Role;
+            UserCtx.CurrentUser = currentUser;
+        }
+        catch
+        {
+            // If Cosmos isn't configured yet, allow through as implicit Owner
+            currentUser = null;
+            userRole = BookSmartsRole.Owner;
+        }
+    }
+
+    private async Task LoadOrgAndCompanies()
+    {
+        try
+        {
+            var orgs = await OrgService.GetOrganizationsAsync(accountId);
+            var org = orgs.FirstOrDefault();
+            divisionsEnabled = org?.DivisionsEnabled ?? false;
+
+            var allCompanies = await OrgService.GetCompaniesAsync(accountId);
+
+            // Filter companies by user access
+            companies = currentUser != null
+                ? PermissionService.FilterCompanies(currentUser, allCompanies)
+                : allCompanies;
+
+            if (companies.Count > 0 && string.IsNullOrEmpty(selectedCompanyId))
+                selectedCompanyId = companies[0].id;
+        }
+        catch { /* Cosmos not configured yet */ }
     }
 
     private async Task OnPinUnlocked()
@@ -375,19 +488,16 @@ else if (isAuthenticated)
         showPinEntry = false;
         showRecovery = false;
 
-        // Load org data now that encryption is unlocked
-        try
+        // Resolve user now that encryption is unlocked
+        await ResolveCurrentUser();
+        if (showAccessDenied)
         {
-            var orgs = await OrgService.GetOrganizationsAsync(accountId);
-            var org = orgs.FirstOrDefault();
-            divisionsEnabled = org?.DivisionsEnabled ?? false;
-
-            companies = await OrgService.GetCompaniesAsync(accountId);
-            if (companies.Count > 0 && string.IsNullOrEmpty(selectedCompanyId))
-                selectedCompanyId = companies[0].id;
+            StateHasChanged();
+            return;
         }
-        catch { }
 
+        // Load org data now that encryption is unlocked
+        await LoadOrgAndCompanies();
         await LoadUncategorizedCount();
 
         // Trigger sync for connections where LastWebhookUtc > LastSyncUtc
@@ -446,7 +556,10 @@ else if (isAuthenticated)
     {
         try
         {
-            companies = await OrgService.GetCompaniesAsync(accountId);
+            var allCompanies = await OrgService.GetCompaniesAsync(accountId);
+            companies = currentUser != null
+                ? PermissionService.FilterCompanies(currentUser, allCompanies)
+                : allCompanies;
             if (companies.Count > 0 && string.IsNullOrEmpty(selectedCompanyId))
                 selectedCompanyId = companies[0].id;
             StateHasChanged();
@@ -469,6 +582,11 @@ else if (isAuthenticated)
     private async Task Logout()
     {
         await Auth.LogoutAsync();
+        RedirectToSso();
+    }
+
+    private void RedirectToSso()
+    {
         var appUrl = DaisiStaticSettings.SsoAppUrl;
         var authorityUrl = DaisiStaticSettings.SsoAuthorityUrl;
         var callbackUrl = Uri.EscapeDataString($"{appUrl}/sso/callback");

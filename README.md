@@ -36,10 +36,10 @@ BookSmarts provides full-featured bookkeeping with support for:
 |---------|-------------|
 | `BookSmarts.Core` | Domain models, enums, and interfaces |
 | `BookSmarts.Data` | Cosmos DB data access layer (partial class pattern) |
-| `BookSmarts.Services` | Business logic — 19 services covering all accounting domains |
+| `BookSmarts.Services` | Business logic — 22 services covering all accounting domains |
 | `BookSmarts.Web` | Blazor Server web application |
 | `BookSmarts.Tools` | Daisinet bot tool integration (10 tools) |
-| `BookSmarts.Tests` | Unit tests (266 tests) |
+| `BookSmarts.Tests` | Unit tests (284 tests) |
 
 ## Getting Started
 
@@ -78,7 +78,7 @@ dotnet test BookSmarts.Tests
 
 Uses Azure Cosmos DB with the `daisi` database. Containers:
 
-- `Organizations` — Organization, Division, Company, and EncryptionConfig documents (partitioned by `AccountId`)
+- `Organizations` — Organization, Division, Company, EncryptionConfig, and BookSmartsUser documents (partitioned by `AccountId`)
 - `ChartOfAccounts` — Chart of accounts entries (partitioned by `CompanyId`)
 - `Journals` — Journal entries with embedded lines (partitioned by `CompanyId`)
 - `Periods` — Fiscal years with embedded periods (partitioned by `CompanyId`)
@@ -109,6 +109,47 @@ Toggle between accrual and cash basis in the header. Cash basis filters journal 
 ### Field-Level Encryption
 
 Sensitive data can be encrypted at rest using PIN-based AES-GCM encryption. When enabled, organization, company, account, journal entry, invoice, bill, and other documents are encrypted before storage and decrypted on read using a session-held key derived from the user's PIN.
+
+## User Management
+
+BookSmarts supports multi-user access with role-based permissions, leveraging Daisinet SSO for authentication.
+
+### Roles
+
+| Role | Permissions |
+|------|-------------|
+| **Owner** | Full access — manage users, encryption, organization, companies, all features |
+| **Accountant** | Write journals, invoices, bills, banking, and budgets; view reports; use AI |
+| **Bookkeeper** | Write journals, invoices, bills, and banking; view reports; use AI |
+| **Viewer** | View reports only |
+
+### Auto-Provisioning
+
+The first user to access BookSmarts for an account is automatically created as an **Owner**. Subsequent users who authenticate via Daisinet SSO but don't have a BookSmarts user record see an "Access Denied" page.
+
+### Team Management
+
+Owners can manage team members from **Settings > Team**:
+
+- **Import from Daisinet** — Pull users from the Daisinet account and assign BookSmarts roles
+- **Edit users** — Change roles, assign per-company access, deactivate/reactivate
+- **Company access** — Non-Owner users can be restricted to specific companies. Owners with no company restrictions have access to all companies by default.
+- **Safety** — The last active Owner cannot be deactivated
+
+### Per-Company Access
+
+- Owners with empty `CompanyIds` = access to ALL companies (default)
+- Non-Owner roles must have explicit company assignments
+- The company dropdown in the header is filtered by the user's company access
+- API endpoints enforce company access checks in addition to account-level auth
+
+### Services
+
+| Service | Description |
+|---------|-------------|
+| `UserManagementService` | CRUD operations for BookSmarts users with encryption support |
+| `PermissionService` | Static helper for role-based permission checks |
+| `UserContext` | Scoped service holding the current user for the session |
 
 ## Bot Tools
 
@@ -203,3 +244,4 @@ Automatic audit trail for key accounting actions:
 - ~~Phase 6: Daisinet bot tool integration~~
 - ~~Phase 7: Custom report builder and audit logging~~
 - ~~Phase 8: AI inference — report insights, business coach chatbot, projections, cash forecast, NL journal entries, budget advisor, bank categorization~~
+- ~~Phase 9: User management — roles (Owner/Accountant/Bookkeeper/Viewer), per-company access, auto-provisioning, team management UI~~

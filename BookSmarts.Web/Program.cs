@@ -32,6 +32,8 @@ builder.Services.AddScoped<EncryptionContext>();
 builder.Services.AddScoped<EncryptionSetupService>();
 builder.Services.AddScoped<EncryptionMigrationService>();
 builder.Services.AddScoped<OrganizationService>();
+builder.Services.AddScoped<UserManagementService>();
+builder.Services.AddScoped<UserContext>();
 builder.Services.AddScoped<ChartOfAccountsService>();
 builder.Services.AddScoped<AccountingService>();
 builder.Services.AddScoped<PeriodService>();

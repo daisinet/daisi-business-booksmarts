@@ -1,4 +1,7 @@
 @page "/budgets"
+@using BookSmarts.Core.Enums
+@using BookSmarts.Core.Models
+@using BookSmarts.Services
 
 <h1 class="bs-page-title">Budgets</h1>
 <p class="bs-page-subtitle">Manage budgets for your company</p>
@@ -16,9 +19,12 @@ else
     <div class="bs-toolbar">
         <div></div>
         <div class="bs-toolbar-actions">
-            <a class="btn btn-primary btn-sm" href="budgets/new">
-                <i class="fa-duotone fa-plus me-1"></i> New Budget
-            </a>
+            @if (CurrentUser == null || PermissionService.CanWriteBudgets(CurrentUser.Role))
+            {
+                <a class="btn btn-primary btn-sm" href="budgets/new">
+                    <i class="fa-duotone fa-plus me-1"></i> New Budget
+                </a>
+            }
         </div>
     </div>
 
@@ -77,6 +83,7 @@ else
 
 @code {
     [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [CascadingParameter(Name = "CurrentUser")] BookSmartsUser? CurrentUser { get; set; }
     [Inject] BudgetService BudgetSvc { get; set; } = default!;
     [Inject] PeriodService PeriodSvc { get; set; } = default!;
 

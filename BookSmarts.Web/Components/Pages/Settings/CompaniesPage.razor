@@ -1,4 +1,13 @@
 @page "/settings/companies"
+@using BookSmarts.Core.Enums
+@using BookSmarts.Core.Models
+@using BookSmarts.Services
+
+@if (CurrentUser != null && !PermissionService.CanManageOrganization(CurrentUser.Role))
+{
+    <div class="alert alert-warning">Only account Owners can manage companies.</div>
+    return;
+}
 
 <h1 class="bs-page-title">Companies</h1>
 <p class="bs-page-subtitle">Manage the companies in your organization</p>
@@ -144,6 +153,7 @@ else
 
 @code {
     [CascadingParameter(Name = "AccountId")] string AccountId { get; set; } = "";
+    [CascadingParameter(Name = "CurrentUser")] BookSmartsUser? CurrentUser { get; set; }
     [CascadingParameter(Name = "RefreshCompanies")] Func<Task>? RefreshCompanies { get; set; }
     [Inject] OrganizationService OrgService { get; set; } = default!;
     [Inject] ChartOfAccountsService CoaService { get; set; } = default!;

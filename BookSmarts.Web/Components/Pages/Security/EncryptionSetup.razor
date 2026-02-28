@@ -1,5 +1,13 @@
 @page "/settings/encryption-setup"
 @using BookSmarts.Services
+@using BookSmarts.Core.Enums
+@using BookSmarts.Core.Models
+
+@if (CurrentUser != null && !PermissionService.CanManageEncryption(CurrentUser.Role))
+{
+    <div class="alert alert-warning">Only account Owners can manage encryption settings.</div>
+    return;
+}
 
 <div class="bs-card" style="max-width: 600px; margin: 0 auto;">
     @if (step == 1)
@@ -121,6 +129,7 @@
 
 @code {
     [CascadingParameter(Name = "AccountId")] string AccountId { get; set; } = "";
+    [CascadingParameter(Name = "CurrentUser")] BookSmartsUser? CurrentUser { get; set; }
     [Inject] EncryptionSetupService SetupService { get; set; } = default!;
     [Inject] EncryptionMigrationService MigrationService { get; set; } = default!;
     [Inject] NavigationManager Nav { get; set; } = default!;
