@@ -1,0 +1,226 @@
+@page "/reports/consolidated-income-statement"
+
+<h1 class="bs-page-title">Consolidated Income Statement</h1>
+<p class="bs-page-subtitle">@(CashBasis ? "Cash Basis" : "Accrual Basis") &mdash; @fromDate.ToString("MMMM d, yyyy") to @toDate.ToString("MMMM d, yyyy")</p>
+
+@if (string.IsNullOrEmpty(AccountId) || companies.Count < 2)
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-chart-mixed"></i>
+        <h4>@(companies.Count < 2 ? "Two or more companies required" : "Not authenticated")</h4>
+        <p>Consolidated statements require at least two companies in your organization.</p>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select class="form-select form-select-sm" style="width: auto;" @bind="selectedPreset" @bind:after="ApplyPreset">
+                <option value="">Custom Range</option>
+                <option value="ytd">Year to Date</option>
+                <option value="thisMonth">This Month</option>
+                <option value="lastMonth">Last Month</option>
+                <option value="thisQuarter">This Quarter</option>
+                <option value="thisYear">This Year</option>
+                <option value="lastYear">Last Year</option>
+            </select>
+            <label class="form-label mb-0 small">From:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="fromDate" @bind:after="OnCustomDateChanged" />
+            <label class="form-label mb-0 small">To:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="toDate" @bind:after="OnCustomDateChanged" />
+        </div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="Print">
+                <i class="fa-duotone fa-print me-1"></i> Print
+            </button>
+        </div>
+    </div>
+
+    @if (report == null)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-chart-mixed"></i>
+            <h4>No data</h4>
+        </div>
+    }
+    else
+    {
+        <div style="overflow-x: auto;">
+            <table class="bs-table" style="min-width: 800px;">
+                <thead>
+                    <tr>
+                        <th>Account</th>
+                        @foreach (var cr in report.CompanyReports)
+                        {
+                            <th class="bs-amount" style="min-width: 120px;">@cr.CompanyName</th>
+                        }
+                        @if (report.Eliminations != null)
+                        {
+                            <th class="bs-amount" style="min-width: 120px;">Eliminations</th>
+                        }
+                        <th class="bs-amount fw-bold" style="min-width: 120px;">Consolidated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @* ── Revenue ── *@
+                    <tr><td colspan="@colCount" class="fw-bold small text-uppercase pt-3 bs-cat-revenue" style="border-bottom: 2px solid currentColor;">Revenue</td></tr>
+                    @foreach (var sect in report.Consolidated.RevenueSections)
+                    {
+                        <tr><td colspan="@colCount" class="fw-semibold small ps-3 pt-2">@sect.Title</td></tr>
+                        @foreach (var line in sect.Lines)
+                        {
+                            <tr>
+                                <td class="ps-4">@line.AccountName</td>
+                                @foreach (var cr in report.CompanyReports)
+                                {
+                                    <td class="bs-amount">@GetCompanyBalance(cr.Report.RevenueSections, line.AccountId).ToString("N2")</td>
+                                }
+                                @if (report.Eliminations != null)
+                                {
+                                    <td class="bs-amount">@GetCompanyBalance(report.Eliminations.RevenueSections, line.AccountId).ToString("N2")</td>
+                                }
+                                <td class="bs-amount fw-semibold">@line.Balance.ToString("N2")</td>
+                            </tr>
+                        }
+                    }
+                    <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                        <td class="text-end">Total Revenue:</td>
+                        @foreach (var cr in report.CompanyReports)
+                        {
+                            <td class="bs-amount">@cr.Report.TotalRevenue.ToString("N2")</td>
+                        }
+                        @if (report.Eliminations != null)
+                        {
+                            <td class="bs-amount">@report.Eliminations.TotalRevenue.ToString("N2")</td>
+                        }
+                        <td class="bs-amount">@report.Consolidated.TotalRevenue.ToString("N2")</td>
+                    </tr>
+
+                    @* ── Expenses ── *@
+                    <tr><td colspan="@colCount" class="fw-bold small text-uppercase pt-4 bs-cat-expense" style="border-bottom: 2px solid currentColor;">Expenses</td></tr>
+                    @foreach (var sect in report.Consolidated.ExpenseSections)
+                    {
+                        <tr><td colspan="@colCount" class="fw-semibold small ps-3 pt-2">@sect.Title</td></tr>
+                        @foreach (var line in sect.Lines)
+                        {
+                            <tr>
+                                <td class="ps-4">@line.AccountName</td>
+                                @foreach (var cr in report.CompanyReports)
+                                {
+                                    <td class="bs-amount">@GetCompanyBalance(cr.Report.ExpenseSections, line.AccountId).ToString("N2")</td>
+                                }
+                                @if (report.Eliminations != null)
+                                {
+                                    <td class="bs-amount">@GetCompanyBalance(report.Eliminations.ExpenseSections, line.AccountId).ToString("N2")</td>
+                                }
+                                <td class="bs-amount fw-semibold">@line.Balance.ToString("N2")</td>
+                            </tr>
+                        }
+                    }
+                    <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                        <td class="text-end">Total Expenses:</td>
+                        @foreach (var cr in report.CompanyReports)
+                        {
+                            <td class="bs-amount">@cr.Report.TotalExpenses.ToString("N2")</td>
+                        }
+                        @if (report.Eliminations != null)
+                        {
+                            <td class="bs-amount">@report.Eliminations.TotalExpenses.ToString("N2")</td>
+                        }
+                        <td class="bs-amount">@report.Consolidated.TotalExpenses.ToString("N2")</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold" style="border-top: 3px double var(--bs-border-color, #000);">
+                        <td class="text-end">Net Income:</td>
+                        @foreach (var cr in report.CompanyReports)
+                        {
+                            <td class="bs-amount @(cr.Report.NetIncome >= 0 ? "text-success" : "text-danger")">@cr.Report.NetIncome.ToString("N2")</td>
+                        }
+                        @if (report.Eliminations != null)
+                        {
+                            <td class="bs-amount">@report.Eliminations.NetIncome.ToString("N2")</td>
+                        }
+                        <td class="bs-amount @(report.Consolidated.NetIncome >= 0 ? "text-success" : "text-danger")">
+                            @report.Consolidated.NetIncome.ToString("N2")
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "AccountId")] string? AccountId { get; set; }
+    [CascadingParameter(Name = "CashBasis")] bool CashBasis { get; set; }
+    [Inject] ConsolidationService ConsolidationSvc { get; set; } = default!;
+    [Inject] OrganizationService OrgSvc { get; set; } = default!;
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    private ConsolidatedIncomeStatementReport? report;
+    private List<Company> companies = new();
+    private string organizationId = "";
+    private string selectedPreset = "ytd";
+    private DateTime fromDate = new(DateTime.Today.Year, 1, 1);
+    private DateTime toDate = DateTime.Today;
+    private int colCount => 1 + companies.Count + (report?.Eliminations != null ? 1 : 0) + 1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(AccountId)) return;
+        try
+        {
+            companies = await OrgSvc.GetCompaniesAsync(AccountId);
+            var orgs = await OrgSvc.GetOrganizationsAsync(AccountId);
+            organizationId = orgs.FirstOrDefault()?.id ?? "";
+        }
+        catch { }
+        if (companies.Count >= 2)
+            await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            report = await ConsolidationSvc.GetConsolidatedIncomeStatementAsync(AccountId!, organizationId, fromDate, toDate, CashBasis);
+        }
+        catch { report = null; }
+    }
+
+    private async Task ApplyPreset()
+    {
+        var today = DateTime.Today;
+        (fromDate, toDate) = selectedPreset switch
+        {
+            "ytd" => (new DateTime(today.Year, 1, 1), today),
+            "thisMonth" => (new DateTime(today.Year, today.Month, 1), today),
+            "lastMonth" => (new DateTime(today.Year, today.Month, 1).AddMonths(-1),
+                            new DateTime(today.Year, today.Month, 1).AddDays(-1)),
+            "thisQuarter" => (new DateTime(today.Year, (((today.Month - 1) / 3) * 3) + 1, 1), today),
+            "thisYear" => (new DateTime(today.Year, 1, 1), new DateTime(today.Year, 12, 31)),
+            "lastYear" => (new DateTime(today.Year - 1, 1, 1), new DateTime(today.Year - 1, 12, 31)),
+            _ => (fromDate, toDate)
+        };
+        await LoadData();
+    }
+
+    private async Task OnCustomDateChanged()
+    {
+        selectedPreset = "";
+        await LoadData();
+    }
+
+    private static decimal GetCompanyBalance(List<FinancialStatementSection> sections, string accountId)
+    {
+        foreach (var section in sections)
+        {
+            var line = section.Lines.FirstOrDefault(l => l.AccountId == accountId);
+            if (line != null) return line.Balance;
+        }
+        return 0m;
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+}

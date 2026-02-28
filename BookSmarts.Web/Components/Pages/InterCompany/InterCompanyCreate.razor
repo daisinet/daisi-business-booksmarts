@@ -1,0 +1,243 @@
+@page "/inter-company/new"
+
+<h1 class="bs-page-title">New Inter-Company Transaction</h1>
+<p class="bs-page-subtitle">Create a transaction between two companies</p>
+
+@if (string.IsNullOrEmpty(AccountId) || companies.Count < 2)
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-arrows-left-right"></i>
+        <h4>Two or more companies required</h4>
+    </div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    <div class="bs-card mb-3">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Source Company</label>
+                <select class="form-select form-select-sm" @bind="sourceCompanyId" @bind:after="OnSourceCompanyChanged">
+                    <option value="">Select source...</option>
+                    @foreach (var c in companies)
+                    {
+                        <option value="@c.id">@c.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Target Company</label>
+                <select class="form-select form-select-sm" @bind="targetCompanyId" @bind:after="OnTargetCompanyChanged">
+                    <option value="">Select target...</option>
+                    @foreach (var c in companies.Where(c => c.id != sourceCompanyId))
+                    {
+                        <option value="@c.id">@c.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Amount</label>
+                <input type="number" class="form-control form-control-sm" step="0.01" min="0.01" @bind="amount" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Transaction Date</label>
+                <input type="date" class="form-control form-control-sm" @bind="transactionDate" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Description</label>
+                <input class="form-control form-control-sm" @bind="description" />
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(sourceCompanyId) && !string.IsNullOrEmpty(targetCompanyId))
+    {
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <div class="bs-card">
+                    <h6>Source Company Accounts</h6>
+                    <div class="mb-2">
+                        <label class="form-label small">Revenue/Expense Account (CR)</label>
+                        <select class="form-select form-select-sm" @bind="sourceAccountId">
+                            <option value="">Select account...</option>
+                            @foreach (var a in sourceAccounts.Where(a => a.Category is AccountCategory.Revenue or AccountCategory.Expense))
+                            {
+                                <option value="@a.id">@a.AccountNumber — @a.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label small">IC Receivable Account (DR)</label>
+                        <select class="form-select form-select-sm" @bind="sourceIcAccountId">
+                            <option value="">Select IC account...</option>
+                            @foreach (var a in sourceAccounts.Where(a => a.SubType == AccountSubType.InterCompanyReceivable))
+                            {
+                                <option value="@a.id">@a.AccountNumber — @a.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="bs-card">
+                    <h6>Target Company Accounts</h6>
+                    <div class="mb-2">
+                        <label class="form-label small">Revenue/Expense Account (DR)</label>
+                        <select class="form-select form-select-sm" @bind="targetAccountId">
+                            <option value="">Select account...</option>
+                            @foreach (var a in targetAccounts.Where(a => a.Category is AccountCategory.Revenue or AccountCategory.Expense))
+                            {
+                                <option value="@a.id">@a.AccountNumber — @a.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label small">IC Payable Account (CR)</label>
+                        <select class="form-select form-select-sm" @bind="targetIcAccountId">
+                            <option value="">Select IC account...</option>
+                            @foreach (var a in targetAccounts.Where(a => a.SubType == AccountSubType.InterCompanyPayable))
+                            {
+                                <option value="@a.id">@a.AccountNumber — @a.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ── Preview ── *@
+        @if (amount > 0 && !string.IsNullOrEmpty(sourceAccountId) && !string.IsNullOrEmpty(sourceIcAccountId)
+            && !string.IsNullOrEmpty(targetAccountId) && !string.IsNullOrEmpty(targetIcAccountId))
+        {
+            <div class="bs-card mb-3">
+                <h6>Journal Entry Preview</h6>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <p class="fw-semibold small">Source: @companies.FirstOrDefault(c => c.id == sourceCompanyId)?.Name</p>
+                        <table class="bs-table">
+                            <thead><tr><th>Account</th><th class="bs-amount">Debit</th><th class="bs-amount">Credit</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td>@sourceAccounts.FirstOrDefault(a => a.id == sourceIcAccountId)?.Name</td>
+                                    <td class="bs-amount">@amount.ToString("N2")</td>
+                                    <td class="bs-amount">—</td>
+                                </tr>
+                                <tr>
+                                    <td>@sourceAccounts.FirstOrDefault(a => a.id == sourceAccountId)?.Name</td>
+                                    <td class="bs-amount">—</td>
+                                    <td class="bs-amount">@amount.ToString("N2")</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="fw-semibold small">Target: @companies.FirstOrDefault(c => c.id == targetCompanyId)?.Name</p>
+                        <table class="bs-table">
+                            <thead><tr><th>Account</th><th class="bs-amount">Debit</th><th class="bs-amount">Credit</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td>@targetAccounts.FirstOrDefault(a => a.id == targetAccountId)?.Name</td>
+                                    <td class="bs-amount">@amount.ToString("N2")</td>
+                                    <td class="bs-amount">—</td>
+                                </tr>
+                                <tr>
+                                    <td>@targetAccounts.FirstOrDefault(a => a.id == targetIcAccountId)?.Name</td>
+                                    <td class="bs-amount">—</td>
+                                    <td class="bs-amount">@amount.ToString("N2")</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary btn-sm" @onclick="Submit" disabled="@saving">
+                <i class="fa-duotone fa-check me-1"></i> Create Transaction
+            </button>
+            <a class="btn btn-outline-secondary btn-sm" href="inter-company">Cancel</a>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "AccountId")] string? AccountId { get; set; }
+    [Inject] InterCompanyService IcSvc { get; set; } = default!;
+    [Inject] OrganizationService OrgSvc { get; set; } = default!;
+    [Inject] ChartOfAccountsService CoaSvc { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    private List<Company> companies = new();
+    private string organizationId = "";
+    private string sourceCompanyId = "";
+    private string targetCompanyId = "";
+    private string sourceAccountId = "";
+    private string sourceIcAccountId = "";
+    private string targetAccountId = "";
+    private string targetIcAccountId = "";
+    private decimal amount;
+    private DateTime transactionDate = DateTime.Today;
+    private string? description;
+    private List<ChartOfAccountEntry> sourceAccounts = new();
+    private List<ChartOfAccountEntry> targetAccounts = new();
+    private bool saving;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(AccountId)) return;
+        try
+        {
+            companies = await OrgSvc.GetCompaniesAsync(AccountId);
+            var orgs = await OrgSvc.GetOrganizationsAsync(AccountId);
+            organizationId = orgs.FirstOrDefault()?.id ?? "";
+        }
+        catch { }
+    }
+
+    private async Task OnSourceCompanyChanged()
+    {
+        if (string.IsNullOrEmpty(sourceCompanyId)) { sourceAccounts = new(); return; }
+        try { sourceAccounts = await CoaSvc.GetChartOfAccountsAsync(sourceCompanyId); }
+        catch { sourceAccounts = new(); }
+    }
+
+    private async Task OnTargetCompanyChanged()
+    {
+        if (string.IsNullOrEmpty(targetCompanyId)) { targetAccounts = new(); return; }
+        try { targetAccounts = await CoaSvc.GetChartOfAccountsAsync(targetCompanyId); }
+        catch { targetAccounts = new(); }
+    }
+
+    private async Task Submit()
+    {
+        error = null;
+        saving = true;
+        try
+        {
+            var request = new InterCompanyTransactionRequest
+            {
+                OrganizationId = organizationId,
+                AccountId = AccountId!,
+                SourceCompanyId = sourceCompanyId,
+                TargetCompanyId = targetCompanyId,
+                SourceAccountId = sourceAccountId,
+                TargetAccountId = targetAccountId,
+                SourceIcAccountId = sourceIcAccountId,
+                TargetIcAccountId = targetIcAccountId,
+                Amount = amount,
+                Description = description,
+                TransactionDate = transactionDate
+            };
+            await IcSvc.CreateInterCompanyTransactionAsync(request);
+            Nav.NavigateTo("inter-company");
+        }
+        catch (Exception ex) { error = ex.Message; }
+        saving = false;
+    }
+}

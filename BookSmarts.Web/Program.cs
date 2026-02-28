@@ -40,6 +40,9 @@ builder.Services.AddScoped<BillService>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<AgingService>();
 builder.Services.AddScoped<FinancialStatementService>();
+builder.Services.AddScoped<BudgetService>();
+builder.Services.AddScoped<InterCompanyService>();
+builder.Services.AddScoped<ConsolidationService>();
 
 var app = builder.Build();
 app.UseDaisiMiddleware();

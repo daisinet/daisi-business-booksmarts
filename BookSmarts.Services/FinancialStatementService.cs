@@ -332,6 +332,7 @@ public class FinancialStatementService(BookSmartsCosmo cosmo, EncryptionContext 
         AccountSubType.Inventory => "Inventory",
         AccountSubType.PrepaidExpenses => "Prepaid Expenses",
         AccountSubType.OtherCurrentAsset => "Other Current Assets",
+        AccountSubType.InterCompanyReceivable => "Inter-Company Receivable",
         AccountSubType.FixedAsset => "Fixed Assets",
         AccountSubType.AccumulatedDepreciation => "Accumulated Depreciation",
         AccountSubType.OtherAsset => "Other Assets",
@@ -342,6 +343,7 @@ public class FinancialStatementService(BookSmartsCosmo cosmo, EncryptionContext 
         AccountSubType.AccruedLiabilities => "Accrued Liabilities",
         AccountSubType.CurrentPortionLongTermDebt => "Current Portion of Long-Term Debt",
         AccountSubType.OtherCurrentLiability => "Other Current Liabilities",
+        AccountSubType.InterCompanyPayable => "Inter-Company Payable",
         AccountSubType.LongTermDebt => "Long-Term Debt",
         AccountSubType.OtherLiability => "Other Liabilities",
 
@@ -379,14 +381,16 @@ public class FinancialStatementService(BookSmartsCosmo cosmo, EncryptionContext 
         subType is AccountSubType.AccountsReceivable
             or AccountSubType.Inventory
             or AccountSubType.PrepaidExpenses
-            or AccountSubType.OtherCurrentAsset;
+            or AccountSubType.OtherCurrentAsset
+            or AccountSubType.InterCompanyReceivable;
 
     private static bool IsCurrentLiability(AccountSubType subType) =>
         subType is AccountSubType.AccountsPayable
             or AccountSubType.CreditCard
             or AccountSubType.AccruedLiabilities
             or AccountSubType.CurrentPortionLongTermDebt
-            or AccountSubType.OtherCurrentLiability;
+            or AccountSubType.OtherCurrentLiability
+            or AccountSubType.InterCompanyPayable;
 
     private static bool IsLongTermAsset(AccountSubType subType) =>
         subType is AccountSubType.FixedAsset

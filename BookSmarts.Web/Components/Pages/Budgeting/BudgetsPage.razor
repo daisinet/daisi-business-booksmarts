@@ -1,0 +1,125 @@
+@page "/budgets"
+
+<h1 class="bs-page-title">Budgets</h1>
+<p class="bs-page-subtitle">Manage budgets for your company</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-calculator"></i>
+        <h4>No company selected</h4>
+        <p>Select a company from the header to manage budgets.</p>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div></div>
+        <div class="bs-toolbar-actions">
+            <a class="btn btn-primary btn-sm" href="budgets/new">
+                <i class="fa-duotone fa-plus me-1"></i> New Budget
+            </a>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @if (budgets.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-calculator"></i>
+            <h4>No budgets</h4>
+            <p>Create a budget to start planning your finances.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table bs-table-striped">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Fiscal Year</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var budget in budgets)
+                {
+                    <tr>
+                        <td>@budget.Name</td>
+                        <td>@GetFiscalYearName(budget.FiscalYearId)</td>
+                        <td>
+                            <span class="bs-badge @GetStatusBadgeClass(budget.Status)">@budget.Status</span>
+                        </td>
+                        <td>@budget.CreatedUtc.ToString("MM/dd/yyyy")</td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary me-1" href="budgets/@budget.id/edit">
+                                <i class="fa-duotone fa-pen-to-square"></i>
+                            </a>
+                            @if (budget.Status == BudgetStatus.Draft)
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteBudget(budget)">
+                                    <i class="fa-duotone fa-trash"></i>
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] BudgetService BudgetSvc { get; set; } = default!;
+    [Inject] PeriodService PeriodSvc { get; set; } = default!;
+
+    private List<Budget> budgets = new();
+    private Dictionary<string, string> fiscalYearNames = new();
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            budgets = await BudgetSvc.GetBudgetsAsync(CompanyId!);
+            var fiscalYears = await PeriodSvc.GetFiscalYearsAsync(CompanyId!);
+            fiscalYearNames = fiscalYears.ToDictionary(fy => fy.id, fy => fy.Name);
+        }
+        catch { /* Cosmos not configured */ }
+    }
+
+    private string GetFiscalYearName(string fyId) =>
+        fiscalYearNames.TryGetValue(fyId, out var name) ? name : fyId;
+
+    private async Task DeleteBudget(Budget budget)
+    {
+        error = null;
+        try
+        {
+            await BudgetSvc.DeleteBudgetAsync(budget.id, CompanyId!);
+            await LoadData();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private static string GetStatusBadgeClass(BudgetStatus status) => status switch
+    {
+        BudgetStatus.Draft => "bs-badge-draft",
+        BudgetStatus.Approved => "bs-badge-posted",
+        BudgetStatus.Closed => "bs-badge-voided",
+        _ => ""
+    };
+}

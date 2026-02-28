@@ -1,0 +1,139 @@
+@page "/inter-company"
+
+<h1 class="bs-page-title">Inter-Company Transactions</h1>
+<p class="bs-page-subtitle">Manage transactions between companies in your organization</p>
+
+@if (string.IsNullOrEmpty(AccountId) || companies.Count < 2)
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-arrows-left-right"></i>
+        <h4>@(companies.Count < 2 ? "Two or more companies required" : "Not authenticated")</h4>
+        <p>Inter-company transactions require at least two companies in your organization.</p>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select class="form-select form-select-sm" style="width: auto;" @bind="filterCompanyId" @bind:after="LoadData">
+                <option value="">All Companies</option>
+                @foreach (var c in companies)
+                {
+                    <option value="@c.id">@c.Name</option>
+                }
+            </select>
+        </div>
+        <div class="bs-toolbar-actions">
+            <a class="btn btn-primary btn-sm" href="inter-company/new">
+                <i class="fa-duotone fa-plus me-1"></i> New Transaction
+            </a>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @if (transactions.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-arrows-left-right"></i>
+            <h4>No inter-company transactions</h4>
+            <p>Create a transaction to move funds between companies.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table bs-table-striped">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Source Company</th>
+                    <th>Target Company</th>
+                    <th class="bs-amount">Amount</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var tx in transactions)
+                {
+                    <tr>
+                        <td>@tx.TransactionDate.ToString("MM/dd/yyyy")</td>
+                        <td>@tx.SourceCompanyName</td>
+                        <td>@tx.TargetCompanyName</td>
+                        <td class="bs-amount">@tx.Amount.ToString("N2")</td>
+                        <td>@tx.Description</td>
+                        <td>
+                            <span class="bs-badge @(tx.Status == InterCompanyStatus.Posted ? "bs-badge-posted" : "bs-badge-voided")">
+                                @tx.Status
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            @if (tx.Status == InterCompanyStatus.Posted)
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => VoidTransaction(tx)">
+                                    <i class="fa-duotone fa-ban"></i> Void
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "AccountId")] string? AccountId { get; set; }
+    [Inject] InterCompanyService IcSvc { get; set; } = default!;
+    [Inject] OrganizationService OrgSvc { get; set; } = default!;
+
+    private List<InterCompanyTransaction> transactions = new();
+    private List<Company> companies = new();
+    private string organizationId = "";
+    private string filterCompanyId = "";
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(AccountId)) return;
+        try
+        {
+            companies = await OrgSvc.GetCompaniesAsync(AccountId);
+            var orgs = await OrgSvc.GetOrganizationsAsync(AccountId);
+            organizationId = orgs.FirstOrDefault()?.id ?? "";
+        }
+        catch { }
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        if (string.IsNullOrEmpty(organizationId)) return;
+        try
+        {
+            if (string.IsNullOrEmpty(filterCompanyId))
+                transactions = await IcSvc.GetInterCompanyTransactionsAsync(organizationId);
+            else
+            {
+                var all = await IcSvc.GetInterCompanyTransactionsAsync(organizationId);
+                transactions = all.Where(t => t.SourceCompanyId == filterCompanyId || t.TargetCompanyId == filterCompanyId).ToList();
+            }
+        }
+        catch { transactions = new(); }
+    }
+
+    private async Task VoidTransaction(InterCompanyTransaction tx)
+    {
+        error = null;
+        try
+        {
+            await IcSvc.VoidInterCompanyTransactionAsync(tx.id, organizationId);
+            await LoadData();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}

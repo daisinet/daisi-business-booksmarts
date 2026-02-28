@@ -1,0 +1,241 @@
+@page "/reports/budget-vs-actual"
+
+<h1 class="bs-page-title">Budget vs Actual</h1>
+<p class="bs-page-subtitle">@(CashBasis ? "Cash Basis" : "Accrual Basis") &mdash; @fromDate.ToString("MMMM d, yyyy") to @toDate.ToString("MMMM d, yyyy")</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-chart-mixed"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select class="form-select form-select-sm" style="width: auto;" @bind="selectedBudgetId" @bind:after="LoadData">
+                <option value="">Select budget...</option>
+                @foreach (var b in budgets)
+                {
+                    <option value="@b.id">@b.Name</option>
+                }
+            </select>
+            <select class="form-select form-select-sm" style="width: auto;" @bind="selectedPreset" @bind:after="ApplyPreset">
+                <option value="">Custom Range</option>
+                <option value="ytd">Year to Date</option>
+                <option value="thisMonth">This Month</option>
+                <option value="lastMonth">Last Month</option>
+                <option value="thisQuarter">This Quarter</option>
+                <option value="thisYear">This Year</option>
+            </select>
+            <label class="form-label mb-0 small">From:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="fromDate" @bind:after="OnCustomDateChanged" />
+            <label class="form-label mb-0 small">To:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="toDate" @bind:after="OnCustomDateChanged" />
+        </div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="Print">
+                <i class="fa-duotone fa-print me-1"></i> Print
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @if (report == null)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-chart-mixed"></i>
+            <h4>No data</h4>
+            <p>Select a budget and date range to generate a comparison report.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table">
+            <thead>
+                <tr>
+                    <th style="width: 80px;">Account</th>
+                    <th>Name</th>
+                    <th class="bs-amount" style="width: 120px;">Budgeted</th>
+                    <th class="bs-amount" style="width: 120px;">Actual</th>
+                    <th class="bs-amount" style="width: 120px;">Variance $</th>
+                    <th class="bs-amount" style="width: 100px;">Variance %</th>
+                </tr>
+            </thead>
+            <tbody>
+                @* ── Revenue ── *@
+                <tr>
+                    <td colspan="6" class="fw-bold small text-uppercase pt-3 bs-cat-revenue" style="border-bottom: 2px solid currentColor;">
+                        Revenue
+                    </td>
+                </tr>
+                @foreach (var sect in report.RevenueSections)
+                {
+                    <tr>
+                        <td colspan="6" class="fw-semibold small ps-3 pt-2">@sect.Title</td>
+                    </tr>
+                    @foreach (var line in sect.Lines)
+                    {
+                        <tr>
+                            <td class="ps-4"><code>@line.AccountNumber</code></td>
+                            <td>@line.AccountName</td>
+                            <td class="bs-amount">@line.BudgetedAmount.ToString("N2")</td>
+                            <td class="bs-amount">@line.ActualAmount.ToString("N2")</td>
+                            <td class="bs-amount @(line.Variance >= 0 ? "text-success" : "text-danger")">
+                                @line.Variance.ToString("N2")
+                            </td>
+                            <td class="bs-amount @(line.Variance >= 0 ? "text-success" : "text-danger")">
+                                @(line.VariancePercent.ToString("N1"))%
+                            </td>
+                        </tr>
+                    }
+                    <tr class="fw-semibold" style="border-top: 1px solid var(--bs-border-color, #ccc);">
+                        <td colspan="2" class="text-end small ps-3">Total @sect.Title:</td>
+                        <td class="bs-amount">@sect.TotalBudgeted.ToString("N2")</td>
+                        <td class="bs-amount">@sect.TotalActual.ToString("N2")</td>
+                        <td class="bs-amount">@sect.TotalVariance.ToString("N2")</td>
+                        <td></td>
+                    </tr>
+                }
+                <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                    <td colspan="2" class="text-end">Total Revenue:</td>
+                    <td class="bs-amount">@report.TotalBudgetedRevenue.ToString("N2")</td>
+                    <td class="bs-amount">@report.TotalActualRevenue.ToString("N2")</td>
+                    <td class="bs-amount @(report.TotalActualRevenue - report.TotalBudgetedRevenue >= 0 ? "text-success" : "text-danger")">
+                        @((report.TotalActualRevenue - report.TotalBudgetedRevenue).ToString("N2"))
+                    </td>
+                    <td></td>
+                </tr>
+
+                @* ── Expenses ── *@
+                <tr>
+                    <td colspan="6" class="fw-bold small text-uppercase pt-4 bs-cat-expense" style="border-bottom: 2px solid currentColor;">
+                        Expenses
+                    </td>
+                </tr>
+                @foreach (var sect in report.ExpenseSections)
+                {
+                    <tr>
+                        <td colspan="6" class="fw-semibold small ps-3 pt-2">@sect.Title</td>
+                    </tr>
+                    @foreach (var line in sect.Lines)
+                    {
+                        <tr>
+                            <td class="ps-4"><code>@line.AccountNumber</code></td>
+                            <td>@line.AccountName</td>
+                            <td class="bs-amount">@line.BudgetedAmount.ToString("N2")</td>
+                            <td class="bs-amount">@line.ActualAmount.ToString("N2")</td>
+                            <td class="bs-amount @(line.Variance <= 0 ? "text-success" : "text-danger")">
+                                @line.Variance.ToString("N2")
+                            </td>
+                            <td class="bs-amount @(line.Variance <= 0 ? "text-success" : "text-danger")">
+                                @(line.VariancePercent.ToString("N1"))%
+                            </td>
+                        </tr>
+                    }
+                    <tr class="fw-semibold" style="border-top: 1px solid var(--bs-border-color, #ccc);">
+                        <td colspan="2" class="text-end small ps-3">Total @sect.Title:</td>
+                        <td class="bs-amount">@sect.TotalBudgeted.ToString("N2")</td>
+                        <td class="bs-amount">@sect.TotalActual.ToString("N2")</td>
+                        <td class="bs-amount">@sect.TotalVariance.ToString("N2")</td>
+                        <td></td>
+                    </tr>
+                }
+                <tr class="fw-bold" style="border-top: 2px solid var(--bs-border-color, #000);">
+                    <td colspan="2" class="text-end">Total Expenses:</td>
+                    <td class="bs-amount">@report.TotalBudgetedExpenses.ToString("N2")</td>
+                    <td class="bs-amount">@report.TotalActualExpenses.ToString("N2")</td>
+                    <td class="bs-amount @(report.TotalActualExpenses - report.TotalBudgetedExpenses <= 0 ? "text-success" : "text-danger")">
+                        @((report.TotalActualExpenses - report.TotalBudgetedExpenses).ToString("N2"))
+                    </td>
+                    <td></td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold" style="border-top: 3px double var(--bs-border-color, #000);">
+                    <td colspan="2" class="text-end">Net Income:</td>
+                    <td class="bs-amount">@report.BudgetedNetIncome.ToString("N2")</td>
+                    <td class="bs-amount">@report.ActualNetIncome.ToString("N2")</td>
+                    <td class="bs-amount @(report.NetIncomeVariance >= 0 ? "text-success" : "text-danger")">
+                        @report.NetIncomeVariance.ToString("N2")
+                    </td>
+                    <td class="bs-amount @(report.NetIncomeVariance >= 0 ? "text-success" : "text-danger")">
+                        @(report.NetIncomeVariancePercent.ToString("N1"))%
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [CascadingParameter(Name = "CashBasis")] bool CashBasis { get; set; }
+    [Inject] BudgetService BudgetSvc { get; set; } = default!;
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    private BudgetVsActualReport? report;
+    private List<Budget> budgets = new();
+    private string selectedBudgetId = "";
+    private string selectedPreset = "ytd";
+    private DateTime fromDate = new(DateTime.Today.Year, 1, 1);
+    private DateTime toDate = DateTime.Today;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+
+        try
+        {
+            budgets = await BudgetSvc.GetBudgetsAsync(CompanyId);
+        }
+        catch { }
+
+        if (!string.IsNullOrEmpty(selectedBudgetId))
+            await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        error = null;
+        report = null;
+
+        if (string.IsNullOrEmpty(selectedBudgetId)) return;
+
+        try
+        {
+            report = await BudgetSvc.GetBudgetVsActualAsync(CompanyId!, selectedBudgetId, fromDate, toDate, CashBasis);
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task ApplyPreset()
+    {
+        var today = DateTime.Today;
+        (fromDate, toDate) = selectedPreset switch
+        {
+            "ytd" => (new DateTime(today.Year, 1, 1), today),
+            "thisMonth" => (new DateTime(today.Year, today.Month, 1), today),
+            "lastMonth" => (new DateTime(today.Year, today.Month, 1).AddMonths(-1),
+                            new DateTime(today.Year, today.Month, 1).AddDays(-1)),
+            "thisQuarter" => (new DateTime(today.Year, (((today.Month - 1) / 3) * 3) + 1, 1), today),
+            "thisYear" => (new DateTime(today.Year, 1, 1), new DateTime(today.Year, 12, 31)),
+            _ => (fromDate, toDate)
+        };
+        await LoadData();
+    }
+
+    private async Task OnCustomDateChanged()
+    {
+        selectedPreset = "";
+        await LoadData();
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+}

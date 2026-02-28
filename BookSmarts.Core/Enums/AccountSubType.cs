@@ -9,6 +9,7 @@ public enum AccountSubType
     Inventory = 103,
     PrepaidExpenses = 104,
     OtherCurrentAsset = 105,
+    InterCompanyReceivable = 106,
     FixedAsset = 110,
     AccumulatedDepreciation = 111,
     OtherAsset = 119,
@@ -19,6 +20,7 @@ public enum AccountSubType
     AccruedLiabilities = 202,
     CurrentPortionLongTermDebt = 203,
     OtherCurrentLiability = 204,
+    InterCompanyPayable = 205,
     LongTermDebt = 210,
     OtherLiability = 219,
 

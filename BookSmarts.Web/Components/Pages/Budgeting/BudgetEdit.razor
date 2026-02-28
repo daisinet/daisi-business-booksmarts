@@ -1,0 +1,306 @@
+@page "/budgets/new"
+@page "/budgets/{BudgetId}/edit"
+
+<h1 class="bs-page-title">@(isNew ? "New Budget" : "Edit Budget")</h1>
+<p class="bs-page-subtitle">@(isNew ? "Create a new budget" : budget?.Name)</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-calculator"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+    @if (!string.IsNullOrEmpty(success))
+    {
+        <div class="alert alert-success">@success</div>
+    }
+
+    <div class="bs-card mb-3">
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Name</label>
+                <input class="form-control form-control-sm" @bind="budgetName" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Fiscal Year</label>
+                <select class="form-select form-select-sm" @bind="selectedFiscalYearId" @bind:after="OnFiscalYearChanged">
+                    <option value="">Select fiscal year...</option>
+                    @foreach (var fy in fiscalYears)
+                    {
+                        <option value="@fy.id">@fy.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Description</label>
+                <input class="form-control form-control-sm" @bind="budgetDescription" />
+            </div>
+        </div>
+    </div>
+
+    @if (selectedFiscalYear != null && revenueAccounts.Count + expenseAccounts.Count > 0)
+    {
+        <div class="bs-card" style="overflow-x: auto;">
+            <table class="bs-table bs-table-striped" style="min-width: 900px;">
+                <thead>
+                    <tr>
+                        <th style="min-width: 50px;">Acct #</th>
+                        <th style="min-width: 150px;">Account Name</th>
+                        @foreach (var period in selectedFiscalYear.Periods)
+                        {
+                            <th class="bs-amount" style="min-width: 100px;">@period.Name.Split(' ')[0]</th>
+                        }
+                        <th class="bs-amount" style="min-width: 100px;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @* ── Revenue Accounts ── *@
+                    <tr>
+                        <td colspan="@(selectedFiscalYear.Periods.Count + 3)" class="fw-bold small text-uppercase pt-3 bs-cat-revenue"
+                            style="border-bottom: 2px solid currentColor;">
+                            Revenue
+                        </td>
+                    </tr>
+                    @foreach (var account in revenueAccounts)
+                    {
+                        <tr>
+                            <td><code>@account.AccountNumber</code></td>
+                            <td>@account.Name</td>
+                            @foreach (var period in selectedFiscalYear.Periods)
+                            {
+                                var key = $"{account.id}|{period.PeriodId}";
+                                <td class="bs-amount">
+                                    <input type="number" class="form-control form-control-sm text-end" style="width: 90px;"
+                                           step="0.01" min="0"
+                                           value="@GetAmount(key)"
+                                           @onchange="(e) => SetAmount(key, account, period, e)" />
+                                </td>
+                            }
+                            <td class="bs-amount fw-semibold">@GetAccountTotal(account.id).ToString("N2")</td>
+                        </tr>
+                    }
+
+                    @* ── Expense Accounts ── *@
+                    <tr>
+                        <td colspan="@(selectedFiscalYear.Periods.Count + 3)" class="fw-bold small text-uppercase pt-4 bs-cat-expense"
+                            style="border-bottom: 2px solid currentColor;">
+                            Expenses
+                        </td>
+                    </tr>
+                    @foreach (var account in expenseAccounts)
+                    {
+                        <tr>
+                            <td><code>@account.AccountNumber</code></td>
+                            <td>@account.Name</td>
+                            @foreach (var period in selectedFiscalYear.Periods)
+                            {
+                                var key = $"{account.id}|{period.PeriodId}";
+                                <td class="bs-amount">
+                                    <input type="number" class="form-control form-control-sm text-end" style="width: 90px;"
+                                           step="0.01" min="0"
+                                           value="@GetAmount(key)"
+                                           @onchange="(e) => SetAmount(key, account, period, e)" />
+                                </td>
+                            }
+                            <td class="bs-amount fw-semibold">@GetAccountTotal(account.id).ToString("N2")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-primary btn-sm" @onclick="SaveDraft" disabled="@saving">
+                <i class="fa-duotone fa-floppy-disk me-1"></i> Save Draft
+            </button>
+            @if (budget != null && budget.Status == BudgetStatus.Draft)
+            {
+                <button class="btn btn-success btn-sm" @onclick="Approve" disabled="@saving">
+                    <i class="fa-duotone fa-check me-1"></i> Approve
+                </button>
+            }
+            <a class="btn btn-outline-secondary btn-sm" href="budgets">Cancel</a>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string? BudgetId { get; set; }
+    [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [Inject] BudgetService BudgetSvc { get; set; } = default!;
+    [Inject] PeriodService PeriodSvc { get; set; } = default!;
+    [Inject] ChartOfAccountsService CoaSvc { get; set; } = default!;
+    [Inject] NavigationManager Nav { get; set; } = default!;
+
+    private bool isNew => string.IsNullOrEmpty(BudgetId);
+    private Budget? budget;
+    private List<FiscalYear> fiscalYears = new();
+    private FiscalYear? selectedFiscalYear;
+    private string selectedFiscalYearId = "";
+    private string budgetName = "";
+    private string? budgetDescription;
+    private List<ChartOfAccountEntry> revenueAccounts = new();
+    private List<ChartOfAccountEntry> expenseAccounts = new();
+    private Dictionary<string, decimal> amounts = new();
+    private bool saving;
+    private string? error;
+    private string? success;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrEmpty(CompanyId)) return;
+
+        try
+        {
+            fiscalYears = await PeriodSvc.GetFiscalYearsAsync(CompanyId);
+            var coa = await CoaSvc.GetChartOfAccountsAsync(CompanyId);
+            revenueAccounts = coa.Where(a => a.Category == AccountCategory.Revenue).OrderBy(a => a.AccountNumber).ToList();
+            expenseAccounts = coa.Where(a => a.Category == AccountCategory.Expense).OrderBy(a => a.AccountNumber).ToList();
+
+            if (!isNew && budget == null)
+            {
+                budget = await BudgetSvc.GetBudgetAsync(BudgetId!, CompanyId);
+                if (budget != null)
+                {
+                    budgetName = budget.Name;
+                    budgetDescription = budget.Description;
+                    selectedFiscalYearId = budget.FiscalYearId;
+                    selectedFiscalYear = fiscalYears.FirstOrDefault(fy => fy.id == selectedFiscalYearId);
+
+                    amounts.Clear();
+                    foreach (var item in budget.LineItems)
+                    {
+                        if (item.Amount > 0)
+                            amounts[$"{item.AccountId}|{item.PeriodId}"] = item.Amount;
+                    }
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task OnFiscalYearChanged()
+    {
+        selectedFiscalYear = fiscalYears.FirstOrDefault(fy => fy.id == selectedFiscalYearId);
+        await Task.CompletedTask;
+    }
+
+    private string GetAmount(string key)
+    {
+        return amounts.TryGetValue(key, out var val) && val > 0 ? val.ToString("F2") : "";
+    }
+
+    private void SetAmount(string key, ChartOfAccountEntry account, FiscalPeriod period, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var val) && val >= 0)
+            amounts[key] = val;
+        else
+            amounts.Remove(key);
+    }
+
+    private decimal GetAccountTotal(string accountId)
+    {
+        return amounts
+            .Where(kvp => kvp.Key.StartsWith(accountId + "|"))
+            .Sum(kvp => kvp.Value);
+    }
+
+    private List<BudgetLineItem> BuildLineItems()
+    {
+        var items = new List<BudgetLineItem>();
+        var allAccounts = revenueAccounts.Concat(expenseAccounts).ToDictionary(a => a.id);
+
+        foreach (var (key, amount) in amounts)
+        {
+            if (amount <= 0) continue;
+            var parts = key.Split('|');
+            var accountId = parts[0];
+            var periodId = parts[1];
+
+            if (!allAccounts.TryGetValue(accountId, out var account)) continue;
+            var period = selectedFiscalYear?.Periods.FirstOrDefault(p => p.PeriodId == periodId);
+
+            items.Add(new BudgetLineItem
+            {
+                AccountId = accountId,
+                AccountNumber = account.AccountNumber,
+                AccountName = account.Name,
+                PeriodId = periodId,
+                PeriodNumber = period?.PeriodNumber ?? 0,
+                Amount = amount
+            });
+        }
+
+        return items;
+    }
+
+    private async Task SaveDraft()
+    {
+        error = null;
+        success = null;
+        saving = true;
+
+        try
+        {
+            if (budget == null)
+            {
+                budget = new Budget
+                {
+                    CompanyId = CompanyId!,
+                    FiscalYearId = selectedFiscalYearId,
+                    Name = budgetName,
+                    Description = budgetDescription,
+                    LineItems = BuildLineItems()
+                };
+                budget = await BudgetSvc.CreateBudgetAsync(budget);
+                success = "Budget created.";
+                Nav.NavigateTo($"budgets/{budget.id}/edit");
+            }
+            else
+            {
+                budget.Name = budgetName;
+                budget.Description = budgetDescription;
+                budget.FiscalYearId = selectedFiscalYearId;
+                budget.LineItems = BuildLineItems();
+                budget = await BudgetSvc.UpdateBudgetAsync(budget);
+                success = "Budget saved.";
+            }
+        }
+        catch (Exception ex) { error = ex.Message; }
+
+        saving = false;
+    }
+
+    private async Task Approve()
+    {
+        error = null;
+        success = null;
+        saving = true;
+
+        try
+        {
+            // Save first
+            if (budget != null)
+            {
+                budget.Name = budgetName;
+                budget.Description = budgetDescription;
+                budget.FiscalYearId = selectedFiscalYearId;
+                budget.LineItems = BuildLineItems();
+                budget = await BudgetSvc.UpdateBudgetAsync(budget);
+            }
+
+            budget = await BudgetSvc.ApproveBudgetAsync(budget!.id, CompanyId!);
+            success = "Budget approved.";
+        }
+        catch (Exception ex) { error = ex.Message; }
+
+        saving = false;
+    }
+}

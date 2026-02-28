@@ -102,6 +102,21 @@ else if (isAuthenticated)
                 @if (!sidebarCollapsed) { <span>Chart of Accounts</span> }
             </NavLink>
 
+            @if (!sidebarCollapsed) { <div class="bs-nav-section">Budgeting</div> }
+            <NavLink class="bs-nav-item" href="budgets">
+                <i class="fa-duotone fa-calculator"></i>
+                @if (!sidebarCollapsed) { <span>Budgets</span> }
+            </NavLink>
+
+            @if (companies.Count >= 2)
+            {
+                @if (!sidebarCollapsed) { <div class="bs-nav-section">Inter-Company</div> }
+                <NavLink class="bs-nav-item" href="inter-company">
+                    <i class="fa-duotone fa-arrows-left-right"></i>
+                    @if (!sidebarCollapsed) { <span>IC Transactions</span> }
+                </NavLink>
+            }
+
             @if (!sidebarCollapsed) { <div class="bs-nav-section">Reports</div> }
             <NavLink class="bs-nav-item" href="trial-balance">
                 <i class="fa-duotone fa-scale-balanced"></i>
@@ -127,6 +142,23 @@ else if (isAuthenticated)
                 <i class="fa-duotone fa-money-bill-wave"></i>
                 @if (!sidebarCollapsed) { <span>Cash Flow</span> }
             </NavLink>
+            <NavLink class="bs-nav-item" href="reports/budget-vs-actual">
+                <i class="fa-duotone fa-chart-mixed"></i>
+                @if (!sidebarCollapsed) { <span>Budget vs Actual</span> }
+            </NavLink>
+
+            @if (companies.Count >= 2)
+            {
+                @if (!sidebarCollapsed) { <div class="bs-nav-section">Consolidated</div> }
+                <NavLink class="bs-nav-item" href="reports/consolidated-balance-sheet">
+                    <i class="fa-duotone fa-layer-group"></i>
+                    @if (!sidebarCollapsed) { <span>Balance Sheet</span> }
+                </NavLink>
+                <NavLink class="bs-nav-item" href="reports/consolidated-income-statement">
+                    <i class="fa-duotone fa-chart-mixed"></i>
+                    @if (!sidebarCollapsed) { <span>Income Statement</span> }
+                </NavLink>
+            }
 
             @if (!sidebarCollapsed) { <div class="bs-nav-section">Settings</div> }
             <NavLink class="bs-nav-item" href="settings/organization">
