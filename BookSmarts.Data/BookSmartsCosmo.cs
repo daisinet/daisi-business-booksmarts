@@ -60,6 +60,8 @@ public partial class BookSmartsCosmo(IConfiguration configuration, string connec
             BudgetsContainerName => BudgetsPartitionKeyName,
             ReconciliationContainerName => ReconciliationPartitionKeyName,
             InterCompanyContainerName => InterCompanyPartitionKeyName,
+            AuditLogContainerName => AuditLogPartitionKeyName,
+            CustomReportsContainerName => CustomReportsPartitionKeyName,
             _ => "id"
         };
 

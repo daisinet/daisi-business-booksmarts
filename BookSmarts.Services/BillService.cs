@@ -4,7 +4,7 @@ using BookSmarts.Data;
 
 namespace BookSmarts.Services;
 
-public class BillService(BookSmartsCosmo cosmo, AccountingService accounting, ChartOfAccountsService coaService, EncryptionContext encryption)
+public class BillService(BookSmartsCosmo cosmo, AccountingService accounting, ChartOfAccountsService coaService, EncryptionContext encryption, AuditService audit)
 {
     /// <summary>
     /// Creates a new bill in Draft status with auto-generated number and computed DueDate.
@@ -24,7 +24,10 @@ public class BillService(BookSmartsCosmo cosmo, AccountingService accounting, Ch
             bill.Lines[i].LineNumber = i + 1;
 
         Encrypt(bill);
-        return Decrypt(await cosmo.CreateBillAsync(bill));
+        var created = Decrypt(await cosmo.CreateBillAsync(bill));
+        await audit.LogAsync(created.CompanyId, "", "Created", nameof(Bill), created.id,
+            created.BillNumber, $"Bill created from {created.VendorName} ({created.Total:C})");
+        return created;
     }
 
     /// <summary>
@@ -84,7 +87,10 @@ public class BillService(BookSmartsCosmo cosmo, AccountingService accounting, Ch
         bill.Status = BillStatus.Received;
         bill.JournalEntryId = je.id;
         Encrypt(bill);
-        return Decrypt(await cosmo.UpdateBillAsync(bill));
+        var received = Decrypt(await cosmo.UpdateBillAsync(bill));
+        await audit.LogAsync(companyId, "", "Received", nameof(Bill), id,
+            received.BillNumber, $"Bill received from {received.VendorName} ({received.Total:C})");
+        return received;
     }
 
     /// <summary>

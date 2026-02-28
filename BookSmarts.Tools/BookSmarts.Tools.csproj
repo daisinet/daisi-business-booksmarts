@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BookSmarts.Services\BookSmarts.Services.csproj" />
+    <ProjectReference Include="..\..\daisi-sdk-dotnet\Daisi.SDK\Daisi.SDK.csproj" />
   </ItemGroup>
 
 </Project>

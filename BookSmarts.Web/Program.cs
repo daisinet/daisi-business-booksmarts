@@ -43,6 +43,8 @@ builder.Services.AddScoped<FinancialStatementService>();
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<InterCompanyService>();
 builder.Services.AddScoped<ConsolidationService>();
+builder.Services.AddScoped<AuditService>();
+builder.Services.AddScoped<CustomReportService>();
 
 var app = builder.Build();
 app.UseDaisiMiddleware();

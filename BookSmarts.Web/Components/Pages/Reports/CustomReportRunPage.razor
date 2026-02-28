@@ -1,0 +1,157 @@
+@page "/reports/custom/run/{ReportId}"
+@inject CustomReportService ReportSvc
+@inject IJSRuntime JS
+
+<h1 class="bs-page-title">@(report?.Name ?? "Custom Report")</h1>
+<p class="bs-page-subtitle">
+    @if (report != null)
+    {
+        @(CashBasis ? "Cash Basis" : "Accrual Basis")
+        @if (result?.AsOfDate != null)
+        {
+            <text> &mdash; As of @result.AsOfDate.Value.ToString("MMMM d, yyyy")</text>
+        }
+        else if (result?.FromDate != null && result?.ToDate != null)
+        {
+            <text> &mdash; @result.FromDate.Value.ToString("MMMM d, yyyy") to @result.ToDate.Value.ToString("MMMM d, yyyy")</text>
+        }
+    }
+</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-file-chart-column"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else if (report == null)
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-file-chart-column"></i>
+        <h4>Report not found</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            @if (report.ReportType == CustomReportType.AccountBalances)
+            {
+                <label class="form-label mb-0 small">As of:</label>
+                <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="asOfDate" @bind:after="RunReport" />
+            }
+            else
+            {
+                <label class="form-label mb-0 small">From:</label>
+                <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="fromDate" @bind:after="RunReport" />
+                <label class="form-label mb-0 small">To:</label>
+                <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="toDate" @bind:after="RunReport" />
+            }
+        </div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="Print">
+                <i class="fa-duotone fa-print me-1"></i> Print
+            </button>
+        </div>
+    </div>
+
+    @if (result == null)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-spinner fa-spin"></i>
+            <h4>Loading...</h4>
+        </div>
+    }
+    else if (result.Groups.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-file-chart-column"></i>
+            <h4>No data</h4>
+            <p>No accounts matched the report criteria, or all balances are zero.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table" id="report-table">
+            <thead>
+                <tr>
+                    <th style="width: 100px;">Account #</th>
+                    <th>Account Name</th>
+                    <th class="bs-amount" style="width: 130px;">Debit</th>
+                    <th class="bs-amount" style="width: 130px;">Credit</th>
+                    <th class="bs-amount" style="width: 130px;">Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var group in result.Groups)
+                {
+                    <tr>
+                        <td colspan="5" class="fw-bold small text-uppercase pt-3" style="border-bottom: 2px solid var(--bs-border-color);">
+                            @group.Title
+                        </td>
+                    </tr>
+                    @foreach (var line in group.Lines)
+                    {
+                        <tr>
+                            <td class="small text-muted">@line.AccountNumber</td>
+                            <td>@line.AccountName</td>
+                            <td class="bs-amount small">@(line.Debit != 0 ? line.Debit.ToString("N2") : "")</td>
+                            <td class="bs-amount small">@(line.Credit != 0 ? line.Credit.ToString("N2") : "")</td>
+                            <td class="bs-amount fw-semibold">@line.Balance.ToString("N2")</td>
+                        </tr>
+                    }
+                    <tr class="bs-subtotal-row">
+                        <td colspan="4" class="text-end fw-bold small">@group.Title Total:</td>
+                        <td class="bs-amount fw-bold">@group.Total.ToString("N2")</td>
+                    </tr>
+                }
+                <tr class="bs-total-row">
+                    <td colspan="4" class="text-end fw-bold">Grand Total:</td>
+                    <td class="bs-amount fw-bold">@result.GrandTotal.ToString("N2")</td>
+                </tr>
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [Parameter] public string? ReportId { get; set; }
+    [CascadingParameter(Name = "CompanyId")] public string? CompanyId { get; set; }
+    [CascadingParameter(Name = "CashBasis")] public bool CashBasis { get; set; }
+
+    private CustomReport? report;
+    private CustomReportResult? result;
+    private DateTime asOfDate = DateTime.Today;
+    private DateTime fromDate = new(DateTime.Today.Year, 1, 1);
+    private DateTime toDate = DateTime.Today;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(ReportId) && !string.IsNullOrEmpty(CompanyId))
+        {
+            try
+            {
+                report = await ReportSvc.GetReportAsync(ReportId, CompanyId);
+                if (report != null)
+                    await RunReport();
+            }
+            catch { }
+        }
+    }
+
+    private async Task RunReport()
+    {
+        if (report == null) return;
+        try
+        {
+            result = await ReportSvc.RunReportAsync(report, asOfDate, fromDate, toDate, CashBasis);
+        }
+        catch { result = null; }
+    }
+
+    private async Task Print()
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
+}

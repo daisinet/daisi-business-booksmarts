@@ -122,7 +122,8 @@ public class ServiceEncryptionTests
              })
              .ReturnsAsync((JournalEntry e) => e);
 
-        var service = new AccountingService(cosmo.Object, context);
+        var auditService = new AuditService(cosmo.Object);
+        var service = new AccountingService(cosmo.Object, context, auditService);
         var result = await service.CreateJournalEntryAsync(new JournalEntry
         {
             CompanyId = "co-1",

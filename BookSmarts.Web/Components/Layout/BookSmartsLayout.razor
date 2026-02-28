@@ -146,6 +146,14 @@ else if (isAuthenticated)
                 <i class="fa-duotone fa-chart-mixed"></i>
                 @if (!sidebarCollapsed) { <span>Budget vs Actual</span> }
             </NavLink>
+            <NavLink class="bs-nav-item" href="reports/custom">
+                <i class="fa-duotone fa-file-chart-column"></i>
+                @if (!sidebarCollapsed) { <span>Custom Reports</span> }
+            </NavLink>
+            <NavLink class="bs-nav-item" href="reports/audit-log">
+                <i class="fa-duotone fa-clipboard-list"></i>
+                @if (!sidebarCollapsed) { <span>Audit Log</span> }
+            </NavLink>
 
             @if (companies.Count >= 2)
             {

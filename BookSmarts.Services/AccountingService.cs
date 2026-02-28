@@ -4,7 +4,7 @@ using BookSmarts.Data;
 
 namespace BookSmarts.Services;
 
-public class AccountingService(BookSmartsCosmo cosmo, EncryptionContext encryption)
+public class AccountingService(BookSmartsCosmo cosmo, EncryptionContext encryption, AuditService audit)
 {
     /// <summary>
     /// Creates a new journal entry in Draft status after validation.
@@ -22,7 +22,10 @@ public class AccountingService(BookSmartsCosmo cosmo, EncryptionContext encrypti
             entry.Lines[i].LineNumber = i + 1;
 
         Encrypt(entry);
-        return Decrypt(await cosmo.CreateJournalEntryAsync(entry));
+        var created = Decrypt(await cosmo.CreateJournalEntryAsync(entry));
+        await audit.LogAsync(created.CompanyId, "", "Created", nameof(JournalEntry), created.id,
+            created.EntryNumber, $"Journal entry created: {created.Description} ({created.TotalDebit:C})", userName: entry.CreatedBy);
+        return created;
     }
 
     /// <summary>
@@ -56,6 +59,8 @@ public class AccountingService(BookSmartsCosmo cosmo, EncryptionContext encrypti
         entry.Status = JournalEntryStatus.Posted;
         entry.PostedUtc = DateTime.UtcNow;
         entry.PostedBy = postedBy;
+        await audit.LogAsync(companyId, "", "Posted", nameof(JournalEntry), id,
+            entry.EntryNumber, $"Journal entry posted ({entry.TotalDebit:C})", userName: postedBy);
         return entry;
     }
 
@@ -74,6 +79,8 @@ public class AccountingService(BookSmartsCosmo cosmo, EncryptionContext encrypti
 
         entry.Status = JournalEntryStatus.Voided;
         entry.VoidedUtc = DateTime.UtcNow;
+        await audit.LogAsync(companyId, "", "Voided", nameof(JournalEntry), id,
+            entry.EntryNumber, $"Journal entry voided ({entry.TotalDebit:C})");
         return entry;
     }
 

@@ -1,0 +1,102 @@
+@page "/reports/custom"
+@inject CustomReportService ReportSvc
+@inject NavigationManager Nav
+
+<h1 class="bs-page-title">Custom Reports</h1>
+<p class="bs-page-subtitle">Saved report definitions</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-file-chart-column"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div></div>
+        <div class="bs-toolbar-actions">
+            <button class="btn btn-primary btn-sm" @onclick="CreateNew">
+                <i class="fa-duotone fa-plus me-1"></i> New Report
+            </button>
+        </div>
+    </div>
+
+    @if (reports.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-file-chart-column"></i>
+            <h4>No custom reports</h4>
+            <p>Create a custom report to get started.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th style="width: 200px;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var report in reports)
+                {
+                    <tr>
+                        <td class="fw-semibold">@report.Name</td>
+                        <td class="small">@report.ReportType</td>
+                        <td class="small text-muted">@report.Description</td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-outline-primary btn-sm" @onclick="() => RunReport(report.id)">
+                                    <i class="fa-duotone fa-play me-1"></i> Run
+                                </button>
+                                <button class="btn btn-outline-secondary btn-sm" @onclick="() => EditReport(report.id)">
+                                    <i class="fa-duotone fa-pen-to-square"></i>
+                                </button>
+                                <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteReport(report)">
+                                    <i class="fa-duotone fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] public string? CompanyId { get; set; }
+
+    private List<CustomReport> reports = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(CompanyId))
+            await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try { reports = await ReportSvc.GetReportsAsync(CompanyId!); }
+        catch { reports = new(); }
+    }
+
+    private void CreateNew() => Nav.NavigateTo("/reports/custom/edit");
+    private void EditReport(string id) => Nav.NavigateTo($"/reports/custom/edit/{id}");
+    private void RunReport(string id) => Nav.NavigateTo($"/reports/custom/run/{id}");
+
+    private async Task DeleteReport(CustomReport report)
+    {
+        try
+        {
+            await ReportSvc.DeleteReportAsync(report.id, report.CompanyId);
+            await LoadData();
+        }
+        catch { }
+    }
+}

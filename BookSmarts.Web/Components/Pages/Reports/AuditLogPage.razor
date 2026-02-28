@@ -1,0 +1,123 @@
+@page "/reports/audit-log"
+@inject AuditService AuditSvc
+
+<h1 class="bs-page-title">Audit Log</h1>
+<p class="bs-page-subtitle">Activity history for the selected company</p>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-clipboard-list"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="bs-toolbar">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <label class="form-label mb-0 small">From:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="fromDate" @bind:after="LoadData" />
+            <label class="form-label mb-0 small">To:</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto;" @bind="toDate" @bind:after="LoadData" />
+            <select class="form-select form-select-sm" style="width: auto;" @bind="entityTypeFilter" @bind:after="LoadData">
+                <option value="">All Types</option>
+                <option value="JournalEntry">Journal Entries</option>
+                <option value="Invoice">Invoices</option>
+                <option value="Bill">Bills</option>
+                <option value="Payment">Payments</option>
+                <option value="ChartOfAccountEntry">Accounts</option>
+                <option value="FiscalYear">Fiscal Years</option>
+                <option value="BankConnection">Bank Connections</option>
+                <option value="Budget">Budgets</option>
+            </select>
+        </div>
+    </div>
+
+    @if (entries.Count == 0)
+    {
+        <div class="bs-empty">
+            <i class="fa-duotone fa-clipboard-list"></i>
+            <h4>No audit entries</h4>
+            <p>Activity will appear here as actions are taken.</p>
+        </div>
+    }
+    else
+    {
+        <table class="bs-table">
+            <thead>
+                <tr>
+                    <th style="width: 160px;">Timestamp</th>
+                    <th style="width: 120px;">Action</th>
+                    <th style="width: 120px;">Type</th>
+                    <th>Entity</th>
+                    <th>Description</th>
+                    <th style="width: 120px;">User</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in entries)
+                {
+                    <tr>
+                        <td class="small text-muted">@entry.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        <td>
+                            <span class="badge @GetActionBadgeClass(entry.Action)">@entry.Action</span>
+                        </td>
+                        <td class="small">@entry.EntityType</td>
+                        <td class="small">@(entry.EntityLabel ?? entry.EntityId)</td>
+                        <td class="small">@entry.Description</td>
+                        <td class="small text-muted">@entry.UserName</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @if (entries.Count >= maxItems)
+        {
+            <p class="text-muted small mt-2">Showing the most recent @maxItems entries. Narrow the date range for more specific results.</p>
+        }
+    }
+}
+
+@code {
+    [CascadingParameter(Name = "CompanyId")] public string? CompanyId { get; set; }
+    [CascadingParameter(Name = "AccountId")] public string? AccountId { get; set; }
+
+    private List<AuditEntry> entries = new();
+    private DateTime fromDate = DateTime.Today.AddDays(-30);
+    private DateTime toDate = DateTime.Today;
+    private string entityTypeFilter = "";
+    private int maxItems = 200;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(CompanyId))
+            await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            entries = await AuditSvc.GetAuditLogAsync(
+                CompanyId!,
+                fromDate,
+                toDate.AddDays(1),
+                string.IsNullOrEmpty(entityTypeFilter) ? null : entityTypeFilter,
+                maxItems: maxItems);
+        }
+        catch { entries = new(); }
+    }
+
+    private static string GetActionBadgeClass(string action) => action.ToLower() switch
+    {
+        "created" => "bg-success",
+        "posted" => "bg-primary",
+        "voided" => "bg-danger",
+        "reversed" => "bg-warning text-dark",
+        "updated" => "bg-info text-dark",
+        "deleted" => "bg-danger",
+        "sent" => "bg-primary",
+        "paid" => "bg-success",
+        _ => "bg-secondary"
+    };
+}

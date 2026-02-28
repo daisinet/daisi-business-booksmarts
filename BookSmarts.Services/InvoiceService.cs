@@ -4,7 +4,7 @@ using BookSmarts.Data;
 
 namespace BookSmarts.Services;
 
-public class InvoiceService(BookSmartsCosmo cosmo, AccountingService accounting, ChartOfAccountsService coaService, EncryptionContext encryption)
+public class InvoiceService(BookSmartsCosmo cosmo, AccountingService accounting, ChartOfAccountsService coaService, EncryptionContext encryption, AuditService audit)
 {
     /// <summary>
     /// Creates a new invoice in Draft status with auto-generated number and computed DueDate.
@@ -26,7 +26,10 @@ public class InvoiceService(BookSmartsCosmo cosmo, AccountingService accounting,
             invoice.Lines[i].LineNumber = i + 1;
 
         Encrypt(invoice);
-        return Decrypt(await cosmo.CreateInvoiceAsync(invoice));
+        var created = Decrypt(await cosmo.CreateInvoiceAsync(invoice));
+        await audit.LogAsync(created.CompanyId, "", "Created", nameof(Invoice), created.id,
+            created.InvoiceNumber, $"Invoice created for {created.CustomerName} ({created.Total:C})");
+        return created;
     }
 
     /// <summary>
@@ -89,7 +92,10 @@ public class InvoiceService(BookSmartsCosmo cosmo, AccountingService accounting,
         invoice.Status = InvoiceStatus.Sent;
         invoice.JournalEntryId = je.id;
         Encrypt(invoice);
-        return Decrypt(await cosmo.UpdateInvoiceAsync(invoice));
+        var sent = Decrypt(await cosmo.UpdateInvoiceAsync(invoice));
+        await audit.LogAsync(companyId, "", "Sent", nameof(Invoice), id,
+            sent.InvoiceNumber, $"Invoice sent to {sent.CustomerName} ({sent.Total:C})");
+        return sent;
     }
 
     /// <summary>

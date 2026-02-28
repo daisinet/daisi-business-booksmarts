@@ -1,0 +1,176 @@
+@page "/reports/custom/edit"
+@page "/reports/custom/edit/{ReportId}"
+@inject CustomReportService ReportSvc
+@inject ChartOfAccountsService CoaSvc
+@inject NavigationManager Nav
+
+<h1 class="bs-page-title">@(isNew ? "New Custom Report" : "Edit Custom Report")</h1>
+
+@if (string.IsNullOrEmpty(CompanyId))
+{
+    <div class="bs-empty">
+        <i class="fa-duotone fa-file-chart-column"></i>
+        <h4>No company selected</h4>
+    </div>
+}
+else
+{
+    <div class="card bs-card">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Report Name</label>
+                    <input type="text" class="form-control" @bind="report.Name" placeholder="e.g. Revenue by Month" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Report Type</label>
+                    <select class="form-select" @bind="report.ReportType">
+                        <option value="@CustomReportType.AccountBalances">Account Balances (point-in-time)</option>
+                        <option value="@CustomReportType.IncomeExpense">Income/Expense (period)</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Description</label>
+                    <input type="text" class="form-control" @bind="report.Description" placeholder="Optional description" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Group By</label>
+                    <select class="form-select" @bind="report.Grouping">
+                        <option value="@CustomReportGrouping.Category">Category</option>
+                        <option value="@CustomReportGrouping.SubType">Sub-Type</option>
+                        <option value="@CustomReportGrouping.None">No Grouping</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Show Zero Balances</label>
+                    <select class="form-select" @bind="report.ShowZeroBalances">
+                        <option value="false">No</option>
+                        <option value="true">Yes</option>
+                    </select>
+                </div>
+            </div>
+
+            <hr class="my-4" />
+
+            <h5>Filter Accounts</h5>
+            <p class="text-muted small">Select which account categories and sub-types to include. Leave empty to include all.</p>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Categories</label>
+                    @foreach (var cat in Enum.GetValues<AccountCategory>())
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="cat-@cat"
+                                   checked="@report.Categories.Contains(cat)"
+                                   @onchange="e => ToggleCategory(cat, (bool)(e.Value ?? false))" />
+                            <label class="form-check-label" for="cat-@cat">@cat</label>
+                        </div>
+                    }
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Sub-Types</label>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        @foreach (var sub in Enum.GetValues<AccountSubType>())
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="sub-@sub"
+                                       checked="@report.SubTypes.Contains(sub)"
+                                       @onchange="e => ToggleSubType(sub, (bool)(e.Value ?? false))" />
+                                <label class="form-check-label small" for="sub-@sub">@sub</label>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger mt-3">@errorMessage</div>
+            }
+
+            <div class="mt-4 d-flex gap-2">
+                <button class="btn btn-primary" @onclick="Save" disabled="@saving">
+                    <i class="fa-duotone fa-floppy-disk me-1"></i> @(saving ? "Saving..." : "Save")
+                </button>
+                <button class="btn btn-outline-secondary" @onclick="Cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string? ReportId { get; set; }
+    [CascadingParameter(Name = "CompanyId")] public string? CompanyId { get; set; }
+
+    private CustomReport report = new();
+    private bool isNew = true;
+    private bool saving;
+    private string? errorMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(ReportId) && !string.IsNullOrEmpty(CompanyId))
+        {
+            var existing = await ReportSvc.GetReportAsync(ReportId, CompanyId);
+            if (existing != null)
+            {
+                report = existing;
+                isNew = false;
+            }
+        }
+        else
+        {
+            report.CompanyId = CompanyId ?? "";
+        }
+    }
+
+    private void ToggleCategory(AccountCategory cat, bool selected)
+    {
+        if (selected && !report.Categories.Contains(cat))
+            report.Categories.Add(cat);
+        else if (!selected)
+            report.Categories.Remove(cat);
+    }
+
+    private void ToggleSubType(AccountSubType sub, bool selected)
+    {
+        if (selected && !report.SubTypes.Contains(sub))
+            report.SubTypes.Add(sub);
+        else if (!selected)
+            report.SubTypes.Remove(sub);
+    }
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(report.Name))
+        {
+            errorMessage = "Report name is required.";
+            return;
+        }
+
+        saving = true;
+        errorMessage = null;
+
+        try
+        {
+            report.CompanyId = CompanyId!;
+            if (isNew)
+                await ReportSvc.CreateReportAsync(report);
+            else
+                await ReportSvc.UpdateReportAsync(report);
+
+            Nav.NavigateTo("/reports/custom");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private void Cancel() => Nav.NavigateTo("/reports/custom");
+}
