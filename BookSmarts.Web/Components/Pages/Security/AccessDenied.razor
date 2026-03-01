@@ -22,11 +22,6 @@
     private async Task SignOut()
     {
         await Auth.LogoutAsync();
-        var appUrl = DaisiStaticSettings.SsoAppUrl;
-        var authorityUrl = DaisiStaticSettings.SsoAuthorityUrl;
-        var callbackUrl = Uri.EscapeDataString($"{appUrl}/sso/callback");
-        var origin = Uri.EscapeDataString(appUrl ?? "");
-        Nav.NavigateTo(
-            $"{authorityUrl}/sso/authorize?returnUrl={callbackUrl}&origin={origin}", true);
+        Nav.NavigateTo("/welcome", true);
     }
 }

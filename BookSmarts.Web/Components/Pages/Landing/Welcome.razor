@@ -1,0 +1,222 @@
+@page "/welcome"
+@layout LandingLayout
+@using Daisi.SDK.Models
+
+<!-- Hero -->
+<section class="landing-hero">
+    <h1>Smart Bookkeeping for Small Business</h1>
+    <p>AI-powered accounting that handles the complexity so you can focus on growing your business.</p>
+    <div class="landing-hero-actions">
+        <a href="@RegisterUrl" class="landing-btn-primary">
+            Create Free Account <i class="fa-solid fa-arrow-right"></i>
+        </a>
+        <a href="@SsoLoginUrl" class="landing-btn-outline">
+            Log In
+        </a>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="landing-section">
+    <h2 class="landing-section-title">Everything You Need to Run Your Books</h2>
+    <p class="landing-section-subtitle">
+        Professional accounting tools powered by AI, designed for business owners who'd rather focus on their business.
+    </p>
+
+    <div class="landing-features">
+        <div class="landing-feature-card">
+            <div class="landing-feature-icon"><i class="fa-duotone fa-table-cells-column-lock"></i></div>
+            <h3>No More Spreadsheet Chaos</h3>
+            <p>Real double-entry accounting with chart of accounts, journal entries, and trial balance. No accounting degree required.</p>
+        </div>
+
+        <div class="landing-feature-card">
+            <div class="landing-feature-icon"><i class="fa-duotone fa-building-columns"></i></div>
+            <h3>Bank Feeds on Autopilot</h3>
+            <p>Connect your bank. Transactions flow in automatically and AI categorizes them with smart rules.</p>
+        </div>
+
+        <div class="landing-feature-card">
+            <div class="landing-feature-icon"><i class="fa-duotone fa-robot"></i></div>
+            <h3>AI Business Coach</h3>
+            <p>Plain-English answers about your finances. Ask "Can I afford to hire?" and get real analysis.</p>
+        </div>
+
+        <div class="landing-feature-card">
+            <div class="landing-feature-icon"><i class="fa-duotone fa-file-invoice-dollar"></i></div>
+            <h3>Invoicing &amp; Bills</h3>
+            <p>Professional invoices, track receivables, manage vendor bills, record payments.</p>
+        </div>
+
+        <div class="landing-feature-card">
+            <div class="landing-feature-icon"><i class="fa-duotone fa-chart-line"></i></div>
+            <h3>Reports That Matter</h3>
+            <p>Balance sheet, income statement, cash flow, budget vs actual, AR/AP aging — from your real data.</p>
+        </div>
+
+        <div class="landing-feature-card">
+            <div class="landing-feature-icon"><i class="fa-duotone fa-buildings"></i></div>
+            <h3>Multi-Company Ready</h3>
+            <p>Multiple companies, inter-company transactions, consolidated reporting under one account.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Security -->
+<section class="landing-section">
+    <h2 class="landing-section-title">Your Data. Your Keys. Zero Access for Us.</h2>
+    <p class="landing-section-subtitle">
+        Financial data is sensitive. BookSmarts gives you full control over who can see it — including us.
+    </p>
+
+    <div class="landing-features" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="landing-feature-card">
+            <div class="landing-feature-icon"><i class="fa-duotone fa-lock-keyhole"></i></div>
+            <h3>End-to-End Encryption</h3>
+            <p>Enable encryption and all your financial data is encrypted at rest with a key derived from your secret PIN. Nobody — not even Daisi — can read it without that PIN.</p>
+        </div>
+
+        <div class="landing-feature-card">
+            <div class="landing-feature-icon"><i class="fa-duotone fa-key"></i></div>
+            <h3>You Hold the Keys</h3>
+            <p>Your encryption key never leaves your browser. We store only the encrypted result. If you don't share your PIN, your data is mathematically inaccessible to anyone else.</p>
+        </div>
+
+        <div class="landing-feature-card">
+            <div class="landing-feature-icon"><i class="fa-duotone fa-shield-check"></i></div>
+            <h3>Optional by Design</h3>
+            <p>Encryption is opt-in. Turn it on when you're ready, set a PIN, and get a recovery phrase. Simple security without complexity.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Pricing Note -->
+<section class="landing-pricing">
+    <h2 class="landing-section-title">Free to Use. Pay Only for AI.</h2>
+    <p>
+        BookSmarts is free. You only pay for Daisinet credits when you use AI features
+        like the Business Coach, cash forecasting, and smart categorization.
+        No subscriptions. No hidden fees.
+    </p>
+</section>
+
+<!-- Get Started Form -->
+<section class="landing-cta" id="get-started">
+    <div class="landing-cta-card">
+        <h2>Get Started</h2>
+
+        @if (_submitted)
+        {
+            <div class="landing-form-success">
+                <i class="fa-solid fa-circle-check"></i>
+                <p>Thanks, @_name! We'll be in touch shortly.</p>
+                <a href="@RegisterUrl" class="landing-btn-primary" style="margin-top:16px;">
+                    Create Your Daisinet Account <i class="fa-solid fa-arrow-right"></i>
+                </a>
+            </div>
+        }
+        else
+        {
+            <p class="landing-cta-subtext" style="margin-bottom:24px;">
+                Tell us a bit about yourself and we'll help you get set up.
+            </p>
+
+            <form class="landing-form" @onsubmit="SubmitLead" @onsubmit:preventDefault>
+                <div class="landing-form-group">
+                    <label for="lead-name">Full Name *</label>
+                    <input id="lead-name" type="text" @bind="_name" required placeholder="Jane Smith" />
+                </div>
+
+                <div class="landing-form-group">
+                    <label for="lead-company">Company Name</label>
+                    <input id="lead-company" type="text" @bind="_companyName" placeholder="Acme Corp" />
+                </div>
+
+                <div class="landing-form-group">
+                    <label for="lead-email">Email *</label>
+                    <input id="lead-email" type="email" @bind="_email" required placeholder="jane@example.com" />
+                </div>
+
+                <div class="landing-form-group">
+                    <label for="lead-phone">Phone</label>
+                    <input id="lead-phone" type="tel" @bind="_phone" placeholder="(555) 123-4567" />
+                </div>
+
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <p class="landing-form-error">@_error</p>
+                }
+
+                <button type="submit" class="landing-btn-primary" disabled="@_submitting" style="width:100%;justify-content:center;">
+                    @if (_submitting)
+                    {
+                        <span>Sending...</span>
+                    }
+                    else
+                    {
+                        <span>Get Started</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    }
+                </button>
+            </form>
+
+            <p class="landing-cta-subtext" style="margin-top:16px;">
+                Already on Daisinet? <a href="@SsoLoginUrl">Log in</a>
+            </p>
+        }
+    </div>
+</section>
+
+@code {
+    [Inject] private HttpClient Http { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private string _name = "";
+    private string _companyName = "";
+    private string _email = "";
+    private string _phone = "";
+    private string? _error;
+    private bool _submitting;
+    private bool _submitted;
+
+    private string SsoLoginUrl => BuildSsoLoginUrl();
+    private string RegisterUrl => $"{DaisiStaticSettings.SsoAuthorityUrl}/account/register";
+
+    private async Task SubmitLead()
+    {
+        _error = null;
+        _submitting = true;
+
+        try
+        {
+            var payload = new { name = _name, companyName = _companyName, email = _email, phone = _phone };
+            var response = await Http.PostAsJsonAsync($"{Nav.BaseUri}api/leads", payload);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _submitted = true;
+            }
+            else
+            {
+                _error = "Something went wrong. Please try again.";
+            }
+        }
+        catch
+        {
+            _error = "Unable to reach the server. Please try again later.";
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private static string BuildSsoLoginUrl()
+    {
+        var appUrl = DaisiStaticSettings.SsoAppUrl;
+        var authorityUrl = DaisiStaticSettings.SsoAuthorityUrl;
+        var callbackUrl = Uri.EscapeDataString($"{appUrl}/sso/callback");
+        var origin = Uri.EscapeDataString(appUrl ?? "");
+        return $"{authorityUrl}/sso/authorize?returnUrl={callbackUrl}&origin={origin}";
+    }
+}

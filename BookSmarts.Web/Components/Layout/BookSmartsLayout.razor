@@ -350,7 +350,7 @@ else if (isAuthenticated)
             isAuthenticated = await Auth.IsAuthenticatedAsync();
             if (!isAuthenticated)
             {
-                RedirectToSso();
+                Nav.NavigateTo("/welcome", true);
                 return;
             }
 
@@ -364,7 +364,7 @@ else if (isAuthenticated)
         catch (Exception ex)
         {
             Console.WriteLine($"Auth error: {ex.Message}");
-            RedirectToSso();
+            Nav.NavigateTo("/welcome", true);
         }
     }
 
@@ -586,7 +586,7 @@ else if (isAuthenticated)
     private async Task Logout()
     {
         await Auth.LogoutAsync();
-        RedirectToSso();
+        Nav.NavigateTo("/welcome", true);
     }
 
     private void RedirectToSso()

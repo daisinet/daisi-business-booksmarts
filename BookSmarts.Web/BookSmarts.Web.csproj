@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="..\BookSmarts.Services\BookSmarts.Services.csproj" />
     <ProjectReference Include="..\..\daisi-sdk-dotnet\Daisi.SDK.Web\Daisi.SDK.Web.csproj" />
+    <ProjectReference Include="..\Daisi.Business.CRM.SDK\Daisi.Business.CRM.SDK.csproj" />
   </ItemGroup>
 
 </Project>

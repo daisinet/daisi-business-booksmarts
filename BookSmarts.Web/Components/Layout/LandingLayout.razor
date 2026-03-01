@@ -1,0 +1,44 @@
+@inherits LayoutComponentBase
+@using Daisi.SDK.Models
+
+<div class="landing-page">
+    <!-- Header -->
+    <header class="landing-header">
+        <div class="landing-container">
+            <a href="/welcome" class="landing-header-brand">
+                <img src="images/daisi-logo-color-white.svg" alt="Daisi" />
+                <span>BookSmarts</span>
+            </a>
+            <div class="landing-header-actions">
+                <a href="@SsoLoginUrl" class="landing-link">Log In</a>
+                <a href="@RegisterUrl" class="landing-btn-primary">Create Account</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Body -->
+    @Body
+
+    <!-- Footer -->
+    <footer class="landing-footer">
+        <a href="/welcome" class="landing-header-brand">
+            <img src="images/daisi-logo-color-white.svg" alt="Daisi" />
+            <span>BookSmarts</span>
+        </a>
+        <span>&copy; @DateTime.UtcNow.Year Distributed AI Systems, Inc.</span>
+    </footer>
+</div>
+
+@code {
+    private string SsoLoginUrl => BuildSsoLoginUrl();
+    private string RegisterUrl => $"{DaisiStaticSettings.SsoAuthorityUrl}/account/register";
+
+    private static string BuildSsoLoginUrl()
+    {
+        var appUrl = DaisiStaticSettings.SsoAppUrl;
+        var authorityUrl = DaisiStaticSettings.SsoAuthorityUrl;
+        var callbackUrl = Uri.EscapeDataString($"{appUrl}/sso/callback");
+        var origin = Uri.EscapeDataString(appUrl ?? "");
+        return $"{authorityUrl}/sso/authorize?returnUrl={callbackUrl}&origin={origin}";
+    }
+}
