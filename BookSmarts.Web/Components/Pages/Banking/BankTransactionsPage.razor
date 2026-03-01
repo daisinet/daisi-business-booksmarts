@@ -39,16 +39,121 @@ else
                 }
             </select>
         </div>
-        @if (selectedTxnIds.Count > 1)
-        {
-            <div class="bs-toolbar-actions">
-                <span class="text-muted small me-2">@selectedTxnIds.Count selected</span>
+        <div class="bs-toolbar-actions d-flex gap-2 align-items-center">
+            @{
+                var uncategorizedCount = transactions.Count(t => t.Status == BankTransactionStatus.Uncategorized);
+            }
+            @if (uncategorizedCount > 0)
+            {
+                <button class="btn btn-outline-primary btn-sm" @onclick="AutoCategorizeAll" disabled="@autoCategorizingAll" style="white-space: nowrap;">
+                    @if (autoCategorizingAll)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    else
+                    {
+                        <i class="fa-duotone fa-wand-magic-sparkles me-1"></i>
+                    }
+                    Ask DAISI To Categorize (@uncategorizedCount)
+                </button>
+            }
+            @if (selectedTxnIds.Count > 1)
+            {
+                <span class="text-muted small">@selectedTxnIds.Count selected</span>
                 <button class="btn btn-primary btn-sm" @onclick="ShowBulkCategorize">
                     <i class="fa-duotone fa-tags me-1"></i> Bulk Categorize
                 </button>
-            </div>
-        }
+            }
+        </div>
     </div>
+
+    @if (autoCategorizingAll || autoCategorizingApplying)
+    {
+        <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="small fw-semibold">
+                    <i class="fa-duotone fa-wand-magic-sparkles me-1" style="color: var(--bs-accent, #6366f1);"></i>
+                    @(autoCategorizingApplying ? "Applying categorizations..." : "Analyzing transactions...")
+                </span>
+                <span class="small text-muted">@autoCatProcessed / @autoCatTotal</span>
+            </div>
+            <div class="progress" style="height: 6px;">
+                <div class="progress-bar" role="progressbar" style="width: @autoCatPercent.ToString("F0")%"></div>
+            </div>
+        </div>
+    }
+
+    @if (autoCatShowReview && autoCatSuggestions.Count > 0)
+    {
+        <div class="border rounded p-3 mb-3" style="max-height: 400px; overflow-y: auto;">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">
+                    <i class="fa-duotone fa-wand-magic-sparkles me-1" style="color: var(--bs-accent, #6366f1);"></i>
+                    DAISI Suggestions — @autoCatSuggestions.Count transaction(s)
+                </h6>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-link btn-sm p-0" style="font-size: 0.75rem" @onclick="() => autoCatSelectedIds = new(autoCatSuggestions.Select(s => s.TxnId))">All</button>
+                    <span class="text-muted">|</span>
+                    <button class="btn btn-link btn-sm p-0" style="font-size: 0.75rem" @onclick="() => autoCatSelectedIds.Clear()">None</button>
+                </div>
+            </div>
+
+            <table class="bs-table" style="font-size: 0.85rem;">
+                <thead>
+                    <tr>
+                        <th style="width: 30px"><input type="checkbox" class="bs-txn-checkbox"
+                            checked="@(autoCatSelectedIds.Count == autoCatSuggestions.Count)"
+                            @onchange="e => { if ((bool)(e.Value ?? false)) autoCatSelectedIds = new(autoCatSuggestions.Select(s => s.TxnId)); else autoCatSelectedIds.Clear(); }" /></th>
+                        <th>Transaction</th>
+                        <th class="bs-amount">Amount</th>
+                        <th>Suggested Account</th>
+                        <th>Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in autoCatSuggestions)
+                    {
+                        <tr>
+                            <td @onclick:stopPropagation>
+                                <input type="checkbox" class="bs-txn-checkbox"
+                                    checked="@autoCatSelectedIds.Contains(s.TxnId)"
+                                    @onchange="() => { if (autoCatSelectedIds.Contains(s.TxnId)) autoCatSelectedIds.Remove(s.TxnId); else autoCatSelectedIds.Add(s.TxnId); }" />
+                            </td>
+                            <td>@(s.Merchant ?? s.Description)</td>
+                            <td class="bs-amount @(s.Amount > 0 ? "bs-amount-negative" : "bs-amount-positive")">
+                                @(s.Amount > 0 ? "-" : "+")@Math.Abs(s.Amount).ToString("N2")
+                            </td>
+                            <td>@s.AccountNumber — @s.AccountName</td>
+                            <td>
+                                @if (s.IsRuleMatch)
+                                {
+                                    <span class="text-muted small"><i class="fa-duotone fa-sparkles me-1"></i>Rule</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted small"><i class="fa-duotone fa-wand-magic-sparkles me-1"></i>AI</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-primary btn-sm" @onclick="ApplyAutoCategorize"
+                    disabled="@(autoCatSelectedIds.Count == 0 || autoCategorizingApplying)">
+                    @if (autoCategorizingApplying)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Apply @autoCatSelectedIds.Count Categorization(s)
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="CancelAutoCategorize" disabled="@autoCategorizingApplying">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    }
 
     <div class="bs-two-panel">
         <!-- Left: Transaction list -->
@@ -356,6 +461,7 @@ else
 
 @code {
     [CascadingParameter(Name = "CompanyId")] string? CompanyId { get; set; }
+    [CascadingParameter(Name = "RefreshBadges")] Func<Task>? RefreshBadges { get; set; }
 
     [Inject] BankingService Banking { get; set; } = default!;
     [Inject] ChartOfAccountsService CoaService { get; set; } = default!;
@@ -379,6 +485,22 @@ else
     private BankingService.RulePreviewResult? rulePreview;
     private HashSet<string> rulePreviewSelectedIds = new();
     private bool rulePreviewLoaded;
+
+    // AI Auto-Categorize All
+    private bool autoCategorizingAll;
+    private bool autoCategorizingApplying;
+    private int autoCatTotal;
+    private int autoCatProcessed;
+    private int autoCatSuccess;
+    private int autoCatSkipped;
+    private int autoCatRulesCreated;
+    private double autoCatPercent;
+
+    // Confirmation step: collected suggestions before applying
+    private record AutoCatSuggestion(string TxnId, string Merchant, string Description, decimal Amount, string AccountId, string AccountNumber, string AccountName, string Reason, bool IsRuleMatch);
+    private List<AutoCatSuggestion> autoCatSuggestions = new();
+    private HashSet<string> autoCatSelectedIds = new();
+    private bool autoCatShowReview;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -536,6 +658,7 @@ else
             rulePreviewSelectedIds.Clear();
             rulePreviewLoaded = false;
             await LoadTransactions();
+            if (RefreshBadges != null) await RefreshBadges();
         }
         catch (Exception ex)
         {
@@ -691,5 +814,238 @@ else
             aiCategorizing = false;
             StateHasChanged();
         }
+    }
+
+    private async Task AutoCategorizeAll()
+    {
+        if (coaAccounts.Count == 0) return;
+
+        autoCategorizingAll = true;
+        autoCatSuggestions.Clear();
+        autoCatSelectedIds.Clear();
+        autoCatShowReview = false;
+        autoCatProcessed = 0;
+        autoCatSkipped = 0;
+        autoCatPercent = 0;
+        error = null;
+        success = null;
+        StateHasChanged();
+
+        try
+        {
+            var uncategorized = transactions
+                .Where(t => t.Status == BankTransactionStatus.Uncategorized)
+                .ToList();
+            autoCatTotal = uncategorized.Count;
+
+            if (autoCatTotal == 0)
+            {
+                success = "No uncategorized transactions to process.";
+                return;
+            }
+
+            // Phase 1: Collect rule-matched suggestions
+            var ruleMatched = uncategorized
+                .Where(t => t.MatchedRuleId != null && !string.IsNullOrEmpty(t.CategorizedAccountId))
+                .ToList();
+
+            foreach (var txn in ruleMatched)
+            {
+                var acct = coaAccounts.FirstOrDefault(a => a.id == txn.CategorizedAccountId);
+                if (acct != null)
+                {
+                    autoCatSuggestions.Add(new AutoCatSuggestion(
+                        txn.id, txn.MerchantName ?? "", txn.Name, txn.Amount,
+                        acct.id, acct.AccountNumber, acct.Name, "Matched by rule", IsRuleMatch: true));
+                }
+                else
+                {
+                    autoCatSkipped++;
+                }
+
+                autoCatProcessed++;
+                autoCatPercent = (double)autoCatProcessed / autoCatTotal * 100;
+                StateHasChanged();
+            }
+
+            // Phase 2: AI-suggest remaining uncategorized — one call per unique merchant
+            var needsAi = uncategorized
+                .Where(t => t.MatchedRuleId == null || string.IsNullOrEmpty(t.CategorizedAccountId))
+                .ToList();
+
+            if (needsAi.Count > 0)
+            {
+                // Group by merchant key for consistent results
+                var merchantGroups = needsAi
+                    .GroupBy(t => (t.MerchantName ?? t.Name).Trim().ToLowerInvariant())
+                    .ToList();
+
+                var expenseAccounts = coaAccounts.Where(a => a.IsActive && a.Category == AccountCategory.Expense)
+                    .OrderBy(a => a.AccountNumber).ToList();
+                var revenueAccounts = coaAccounts.Where(a => a.IsActive && a.Category == AccountCategory.Revenue)
+                    .OrderBy(a => a.AccountNumber).ToList();
+
+                var expenseList = string.Join("\n", expenseAccounts.Select(a => $"  {a.AccountNumber} — {a.Name}"));
+                var revenueList = string.Join("\n", revenueAccounts.Select(a => $"  {a.AccountNumber} — {a.Name}"));
+
+                var systemPrompt = "You are an accounting assistant. Categorize a bank transaction to the best matching account.\n\n" +
+                    "EXPENSE accounts:\n" + expenseList + "\n\n" +
+                    "REVENUE accounts:\n" + revenueList + "\n\n" +
+                    "Respond with ONLY a JSON object:\n" +
+                    "{ \"account\": \"5000\", \"reason\": \"brief why\" }\n\n" +
+                    "Rules:\n" +
+                    "- \"account\" must be an account number from the lists above\n" +
+                    "- The Plaid category and merchant name are the strongest hints. Match them to the closest account by meaning.\n" +
+                    "- A negative amount can be a refund — use the Plaid category to decide the account, not the sign.\n" +
+                    "- Only use Revenue accounts for actual income (e.g. customer payments, sales). Refunds from vendors are still expenses.\n" +
+                    "- NEVER use Other Expense or a catch-all if a more specific account fits.";
+
+                foreach (var group in merchantGroups)
+                {
+                    var rep = group.First();
+                    var cats = rep.PlaidCategories.Count > 0
+                        ? string.Join(" > ", rep.PlaidCategories) : "none";
+
+                    var userPrompt = $"Merchant: {rep.MerchantName ?? "unknown"}\n" +
+                        $"Description: {rep.Name}\n" +
+                        $"Amount: {rep.Amount:N2} (positive = money out, negative = money in)\n" +
+                        $"Plaid categories: {cats}";
+
+                    try
+                    {
+                        var result = await InferenceService.AnalyzeAsync(systemPrompt, userPrompt, 0.3f);
+
+                        var jsonStart = result.IndexOf('{');
+                        var jsonEnd = result.LastIndexOf('}');
+                        if (jsonStart >= 0 && jsonEnd > jsonStart)
+                        {
+                            var json = result[jsonStart..(jsonEnd + 1)];
+                            using var doc = System.Text.Json.JsonDocument.Parse(json);
+                            var root = doc.RootElement;
+
+                            var acctNum = root.TryGetProperty("account", out var aidEl) ? aidEl.GetString() ?? "" : "";
+                            var aiReason = root.TryGetProperty("reason", out var reasonEl) ? reasonEl.GetString() ?? "" : "";
+                            var acct = coaAccounts.FirstOrDefault(a => a.AccountNumber == acctNum);
+
+                            if (acct != null)
+                            {
+                                foreach (var txn in group)
+                                {
+                                    autoCatSuggestions.Add(new AutoCatSuggestion(
+                                        txn.id, txn.MerchantName ?? "", txn.Name, txn.Amount,
+                                        acct.id, acct.AccountNumber, acct.Name, aiReason, IsRuleMatch: false));
+                                    autoCatProcessed++;
+                                    autoCatPercent = (double)autoCatProcessed / autoCatTotal * 100;
+                                }
+                                StateHasChanged();
+                                continue;
+                            }
+                        }
+                    }
+                    catch { }
+
+                    // If we get here, this merchant wasn't matched
+                    foreach (var txn in group)
+                    {
+                        autoCatSkipped++;
+                        autoCatProcessed++;
+                        autoCatPercent = (double)autoCatProcessed / autoCatTotal * 100;
+                    }
+                    StateHasChanged();
+                }
+            }
+
+            // Show review panel with all suggestions pre-selected
+            if (autoCatSuggestions.Count > 0)
+            {
+                autoCatSelectedIds = new(autoCatSuggestions.Select(s => s.TxnId));
+                autoCatShowReview = true;
+            }
+            else
+            {
+                success = autoCatSkipped > 0
+                    ? $"DAISI could not suggest accounts for {autoCatSkipped} transaction(s). Try categorizing manually."
+                    : "No uncategorized transactions to process.";
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Auto-categorize failed: {ex.Message}";
+        }
+        finally
+        {
+            autoCategorizingAll = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ApplyAutoCategorize()
+    {
+        if (autoCatSelectedIds.Count == 0) return;
+
+        autoCategorizingApplying = true;
+        autoCatSuccess = 0;
+        autoCatRulesCreated = 0;
+        var applySkipped = 0;
+        autoCatProcessed = 0;
+        autoCatTotal = autoCatSelectedIds.Count;
+        autoCatPercent = 0;
+        error = null;
+        success = null;
+        StateHasChanged();
+
+        try
+        {
+            var selected = autoCatSuggestions.Where(s => autoCatSelectedIds.Contains(s.TxnId)).ToList();
+
+            foreach (var s in selected)
+            {
+                try
+                {
+                    await Banking.CategorizeTransactionAsync(s.TxnId, CompanyId!,
+                        s.AccountId, s.AccountNumber, s.AccountName, createRule: !s.IsRuleMatch);
+                    autoCatSuccess++;
+                    if (!s.IsRuleMatch && !string.IsNullOrEmpty(s.Merchant))
+                        autoCatRulesCreated++;
+                }
+                catch
+                {
+                    applySkipped++;
+                }
+
+                autoCatProcessed++;
+                autoCatPercent = (double)autoCatProcessed / autoCatTotal * 100;
+                StateHasChanged();
+            }
+
+            var parts = new List<string>();
+            if (autoCatSuccess > 0) parts.Add($"{autoCatSuccess} categorized");
+            if (autoCatRulesCreated > 0) parts.Add($"{autoCatRulesCreated} rules created");
+            if (applySkipped > 0) parts.Add($"{applySkipped} failed");
+            success = $"Done: {string.Join(", ", parts)}.";
+
+            autoCatShowReview = false;
+            autoCatSuggestions.Clear();
+            autoCatSelectedIds.Clear();
+            selectedTxn = null;
+            await LoadTransactions();
+            if (RefreshBadges != null) await RefreshBadges();
+        }
+        catch (Exception ex)
+        {
+            error = $"Apply failed: {ex.Message}";
+        }
+        finally
+        {
+            autoCategorizingApplying = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelAutoCategorize()
+    {
+        autoCatShowReview = false;
+        autoCatSuggestions.Clear();
+        autoCatSelectedIds.Clear();
     }
 }

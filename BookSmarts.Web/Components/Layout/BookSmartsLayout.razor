@@ -117,19 +117,15 @@ else if (isAuthenticated)
                 <i class="fa-duotone fa-list-tree"></i>
                 @if (!sidebarCollapsed) { <span>Chart of Accounts</span> }
             </NavLink>
-
             @if (PermissionService.CanWriteBudgets(userRole))
             {
-                @if (!sidebarCollapsed) { <div class="bs-nav-section">Budgeting</div> }
                 <NavLink class="bs-nav-item" href="budgets">
                     <i class="fa-duotone fa-calculator"></i>
                     @if (!sidebarCollapsed) { <span>Budgets</span> }
                 </NavLink>
             }
-
             @if (companies.Count >= 2)
             {
-                @if (!sidebarCollapsed) { <div class="bs-nav-section">Inter-Company</div> }
                 <NavLink class="bs-nav-item" href="inter-company">
                     <i class="fa-duotone fa-arrows-left-right"></i>
                     @if (!sidebarCollapsed) { <span>IC Transactions</span> }
@@ -295,7 +291,9 @@ else if (isAuthenticated)
                     <CascadingValue Value="accountId" Name="AccountId">
                         <CascadingValue Value="cashBasis" Name="CashBasis">
                             <CascadingValue Value="RefreshCompanies" Name="RefreshCompanies">
-                                @Body
+                                <CascadingValue Value="RefreshBadges" Name="RefreshBadges">
+                                    @Body
+                                </CascadingValue>
                             </CascadingValue>
                         </CascadingValue>
                     </CascadingValue>
@@ -551,6 +549,12 @@ else if (isAuthenticated)
     {
         await LoadUncategorizedCount();
     }
+
+    private Func<Task> RefreshBadges => async () =>
+    {
+        await LoadUncategorizedCount();
+        StateHasChanged();
+    };
 
     private Func<Task> RefreshCompanies => async () =>
     {

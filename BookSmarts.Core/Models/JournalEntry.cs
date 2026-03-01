@@ -18,8 +18,8 @@ public class JournalEntry : IEncryptable
     public string? ReversalOfId { get; set; }
     public string? FiscalPeriodId { get; set; }
     public List<JournalLine> Lines { get; set; } = new();
-    public decimal TotalDebit => Lines.Sum(l => l.Debit);
-    public decimal TotalCredit => Lines.Sum(l => l.Credit);
+    public decimal TotalDebit => Lines?.Sum(l => l.Debit) ?? 0;
+    public decimal TotalCredit => Lines?.Sum(l => l.Credit) ?? 0;
     public bool IsBalanced => TotalDebit == TotalCredit && TotalDebit > 0;
     public string? CreatedBy { get; set; }
     public string? PostedBy { get; set; }

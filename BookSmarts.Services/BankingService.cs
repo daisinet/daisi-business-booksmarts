@@ -258,7 +258,7 @@ public class BankingService(
         var connection = Decrypt(await cosmo.GetBankConnectionAsync(txn.BankConnectionId, companyId)
             ?? throw new InvalidOperationException("Bank connection not found."));
 
-        var bankAccount = connection.Accounts.FirstOrDefault(a => a.PlaidAccountId == txn.PlaidAccountId);
+        var bankAccount = (connection.Accounts ?? []).FirstOrDefault(a => a.PlaidAccountId == txn.PlaidAccountId);
         if (bankAccount?.MappedCoaAccountId == null)
             throw new InvalidOperationException("Bank account is not mapped to a COA account. Please map it first.");
 
