@@ -1,4 +1,7 @@
 <Solution>
+  <Project Path="../daisi-business-crm/Daisi.Business.CRM.SDK/Daisi.Business.CRM.SDK.csproj" />
+  <Project Path="../daisi-sdk-dotnet/Daisi.SDK.Web/Daisi.SDK.Web.csproj" />
+  <Project Path="../daisi-sdk-dotnet/Daisi.SDK/Daisi.SDK.csproj" />
   <Project Path="BookSmarts.Core\BookSmarts.Core.csproj" />
   <Project Path="BookSmarts.Data\BookSmarts.Data.csproj" />
   <Project Path="BookSmarts.Services\BookSmarts.Services.csproj" />
