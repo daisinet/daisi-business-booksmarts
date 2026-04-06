@@ -9,4 +9,6 @@
   <Project Path="BookSmarts.Tools\BookSmarts.Tools.csproj" />
   <Project Path="BookSmarts.Tests\BookSmarts.Tests.csproj" />
   <Project Path="BookSmarts.SDK\BookSmarts.SDK.csproj" />
+  <Project Path="BookSmarts.E2E\BookSmarts.E2E.csproj" />
+  <Project Path="BookSmarts.Cleanup\BookSmarts.Cleanup.csproj" />
 </Solution>
