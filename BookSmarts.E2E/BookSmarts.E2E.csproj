@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.0" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.52.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\daisi-sdk-dotnet\Daisi.SDK\Daisi.SDK.csproj" />
+    <ProjectReference Include="..\..\daisi-sdk-dotnet\Daisi.SDK.Web\Daisi.SDK.Web.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="testsettings.json" Condition="Exists('testsettings.json')" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="testsettings.template.json" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+
+</Project>

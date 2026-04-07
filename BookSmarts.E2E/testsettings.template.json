@@ -1,0 +1,23 @@
+{
+  "BookSmarts": {
+    "BaseUrl": "https://localhost:5201"
+  },
+  "Manager": {
+    "BaseUrl": "https://localhost:7150"
+  },
+  "Daisi": {
+    "SecretKey": "<from: dotnet user-secrets list --id booksmarts-web-2026>",
+    "SsoSigningKey": "<from: dotnet user-secrets list --id booksmarts-web-2026>",
+    "OrcHost": "localhost",
+    "OrcPort": 5001,
+    "OrcUseSsl": true
+  },
+  "TestUser": {
+    "UserId": "<your DAISI user ID>",
+    "UserName": "Your Name",
+    "AccountId": "<your DAISI account ID>",
+    "AccountName": "Your Account",
+    "UserRole": "Owner",
+    "EncryptionPin": "<your 6-digit encryption PIN, or omit if encryption is not enabled>"
+  }
+}
